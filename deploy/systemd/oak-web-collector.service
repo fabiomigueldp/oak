@@ -1,0 +1,18 @@
+[Unit]
+Description=Oak read-only web status collector
+After=oak.service
+[Service]
+ExecStart=/usr/bin/python3 /srv/oak/collect.py
+Restart=always
+RestartSec=5
+MemoryMax=96M
+CPUQuota=10%
+Nice=15
+UMask=0022
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/srv/oak/web
+[Install]
+WantedBy=multi-user.target
