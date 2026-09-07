@@ -22,4 +22,6 @@ The published message and topic were verified in the Discord UI. The report and 
 
 ## Full external adapter publication
 
-The full converter was extracted into `map/adapter.py` on 2026-09-07 UTC. It includes the NBT codec, palette conversion, MCA rewrite, configurable CLI paths, input/output separation, and report-aware incremental stamps. Five synthetic regression tests cover conversion and filesystem boundaries. Production-specific paths and orchestration are excluded; this does not install a new renderer or change native BlueMap code. A follow-up to the existing discussion will identify this distinction explicitly.
+The full converter was extracted into `map/adapter.py` on 2026-09-07 UTC. It includes the NBT codec, palette conversion, MCA rewrite, configurable CLI paths, input/output separation, and report-aware incremental stamps. Five synthetic regression tests cover conversion and filesystem boundaries. Production-specific paths and orchestration are excluded; this does not install a new renderer or change native BlueMap code.
+
+A follow-up sharing commit `8051e07ed7832448b1ef664c4d2703272ee1d289` was published and verified in the original Discord topic on 2026-09-07 UTC (2026-09-06 22:38 America/Sao_Paulo). [Follow-up message](https://discord.com/channels/665868367416131594/1546329678875336754/1546333827494977566). It explicitly identifies the code as an AI-assisted external workaround, not a native BlueMap PR. [CI validation](https://github.com/fabiomigueldp/oak/actions/runs/34073648008) passed before submission.
