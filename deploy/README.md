@@ -18,6 +18,8 @@ Caddy terminates TLS and proxies to `oak-web:80` on the existing Docker network 
 
 Edit this repository, run checks, commit, and push to `main`. Wait for the GitHub **Checks** workflow to succeed, then obtain the full SHA:
 
+If hosted CI is unavailable before any job starts, record the infrastructure failure and run both documented checks locally against the exact commit before deployment. On 2026-09-07 UTC, GitHub rejected the initial run because the account was locked due to a billing issue; no CI test executed. Local checks passed, and the deployer also executes Python and isolated tests on the VM. This is a temporary operator-verified fallback, not a successful GitHub Actions run.
+
 ```sh
 git rev-parse HEAD
 ```
