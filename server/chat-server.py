@@ -5,6 +5,8 @@ condition=threading.Condition(); snapshot='{}'; revision=0
 web_messages=collections.deque(maxlen=60)
 rate_lock=threading.Lock();recent={};global_rate=collections.deque()
 streams=threading.BoundedSemaphore(32)
+# Floodgate adds a dot prefix to Bedrock names; keep system/private logs excluded.
+GAME_CHAT=re.compile(r'^\[([\d:]+)\] \[Server thread/INFO\]: (?:\[Not Secure\] )?<([.]?[A-Za-z0-9_]{1,16})> (.*)$')
 def exact(s,n):
  b=b''
  while len(b)<n:
@@ -37,7 +39,7 @@ def monitor():
    with (ROOT/'server/logs/latest.log').open(errors='replace') as f:
     f.seek(0,2);size=f.tell();f.seek(max(0,size-256000))
     for line in f:
-     m=re.match(r'^\[([\d:]+)\] \[Server thread/INFO\]: (?:\[Not Secure\] )?<([A-Za-z0-9_]{1,16})> (.*)$',line)
+     m=GAME_CHAT.match(line)
      if m:messages.append({'time':m[1],'player':m[2],'text':m[3][:1000],'source':'game'})
    with condition:
     messages.extend(list(web_messages))

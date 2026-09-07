@@ -1,5 +1,11 @@
 import importlib.util,pathlib,tempfile,threading,http.client,json
 spec=importlib.util.spec_from_file_location('oakchat',pathlib.Path(__file__).resolve().parents[1]/'server/chat-server.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+for name in ('JavaPlayer', '.Bedrock_Player', '.abcdefghijklmnop'):
+ for prefix in ('', '[Not Secure] '):
+  parsed=m.GAME_CHAT.match(f'[12:34:56] [Server thread/INFO]: {prefix}<{name}> Hello <world>')
+  assert parsed and parsed[2]==name and parsed[3]=='Hello <world>'
+for body in ('Player joined the game', '[Player: command output]', 'Player whispers to you: private', '<..invalid> text'):
+ assert m.GAME_CHAT.match('[12:34:56] [Server thread/INFO]: '+body) is None
 with tempfile.TemporaryDirectory() as tmp:
  m.ROOT=pathlib.Path(tmp);(m.ROOT/'web').mkdir();(m.ROOT/'web/status.json').write_text('{"online":true}')
  delivered=[];m.send_message=lambda n,t:delivered.append((n,t));m.snapshot='{"test":true}'
