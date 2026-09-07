@@ -35,7 +35,8 @@ def replace_file(path, content):
         temporary = Path(stream.name)
         stream.write(content)
     try:
-        shutil.copystat(path, temporary)
+        # Preserve access mode, but keep a fresh mtime for HTTP cache validation.
+        shutil.copymode(path, temporary)
         if hasattr(os, 'chown'):
             os.chown(temporary, stat.st_uid, stat.st_gid)
         temporary.replace(path)

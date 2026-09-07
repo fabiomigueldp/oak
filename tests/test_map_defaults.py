@@ -1,6 +1,7 @@
 """Keep public quality updates isolated from map coverage and renderer settings."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -27,6 +28,17 @@ class MapDefaultsTests(unittest.TestCase):
             module.prepare('', '{"version":"5.23"}')
         with self.assertRaises(ValueError):
             module.prepare('', '{"version":"future"}')
+
+    def test_atomic_replacement_refreshes_http_modification_time(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'settings.json'
+            target.write_text('old')
+            os.utime(target, (1000000000, 1000000000))
+            mode = target.stat().st_mode
+            module.replace_file(target, b'new')
+            self.assertEqual(target.read_bytes(), b'new')
+            self.assertEqual(target.stat().st_mode, mode)
+            self.assertGreater(target.stat().st_mtime, 1000000000)
 
     def test_failed_second_write_restores_first_file(self):
         with tempfile.TemporaryDirectory() as directory:
