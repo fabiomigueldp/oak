@@ -2,6 +2,8 @@
 
 ## Scope and status
 
+Submitted for maintainer discussion in the official BlueMap [suggestions topic](https://discord.com/channels/665868367416131594/1546329678875336754). See [submission record](SUBMISSION.md). No native patch has been submitted or accepted.
+
 This is a compatibility investigation for **BlueMap CLI 5.23** with a **Vanilla Java Edition 26.3-pre-2** world and matching client resources. The observed rendering ran on Linux ARM64 with Java 25. No world-generation mods were used. This is prerelease-version support, not a claim of a regression within BlueMap's advertised supported versions.
 
 On 2026-09-07 UTC, the latest published release was v5.23. Upstream `master` at `9c4efeb9696eaae979ec70ea11de8be30e7d2a53` still expects a compound containing `Name` and optional `Properties` in [BlockStateDeserializer.java](https://github.com/BlueMap-Minecraft/BlueMap/blob/9c4efeb9696eaae979ec70ea11de8be30e7d2a53/core/src/main/java/de/bluecolored/bluemap/core/world/mca/data/BlockStateDeserializer.java). That source inspection does not substitute for a full build/render test of master. Searches for 26.3 in existing issues and PRs did not find a matching report at the time of review.

@@ -1,4 +1,4 @@
-# Proposed Discord submission
+# Discord submission
 
 Hi! I have a scoped compatibility investigation for Vanilla 26.3-pre-2 worlds rendered with BlueMap CLI 5.23. I understand this is prerelease support, not a supported-version regression, and your guidelines ask for discussion before a new feature PR.
 
@@ -12,4 +12,10 @@ This investigation was prepared with AI assistance; I am sharing compatibility e
 
 ---
 
-Submission status: prepared; upstream delivery is pending access to an authenticated Discord session. Publication in the Oak repository is not an upstream submission or acceptance.
+Submission status: published in BlueMap's official `#suggestions` forum on 2026-09-07 UTC (2026-09-06 22:22 America/Sao_Paulo).
+
+Topic: **26.3-pre-2 palette compatibility: omitted defaults and Dappled Forest rendering**
+
+Link: https://discord.com/channels/665868367416131594/1546329678875336754
+
+The published message and topic were verified in the Discord UI. The report and its two unchanged owner-supplied images are linked from the post. This is a compatibility-evidence submission for maintainer discussion, not a code PR, an accepted patch, or a promise of support. No maintainer approval has been recorded.
