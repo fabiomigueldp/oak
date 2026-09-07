@@ -1,0 +1,29 @@
+/* Keep standalone maps stable while mobile browser toolbars expand or collapse. */
+@media (pointer: coarse) {
+  html, body { height: 100%; height: 100svh; }
+}
+#oak-map-recovery {
+  position: fixed;
+  z-index: 10000;
+  top: max(12px, env(safe-area-inset-top));
+  left: 12px;
+  right: 12px;
+  margin: auto;
+  max-width: 420px;
+  padding: 16px;
+  border: 1px solid oklch(34% .015 140);
+  border-radius: 8px;
+  background: oklch(21% .014 150);
+  color: oklch(93% .014 95);
+  font: 14px/1.5 system-ui, sans-serif;
+}
+#oak-map-recovery p { margin: 0 0 12px; }
+#oak-map-recovery a {
+  display: inline-block;
+  padding: 10px 12px;
+  border-radius: 5px;
+  background: oklch(82% .067 115);
+  color: oklch(21% .014 150);
+  text-decoration: none;
+}
+#oak-map-recovery a:focus-visible { outline: 2px solid oklch(93% .014 95); outline-offset: 4px; }

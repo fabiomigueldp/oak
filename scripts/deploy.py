@@ -15,6 +15,8 @@ TARGETS = {
     'public/index.html': Path('/srv/oak/web/index.html'),
     'public/style.css': Path('/srv/oak/web/style.css'),
     'public/app.js': Path('/srv/oak/web/app.js'),
+    'public/map-profile.js': Path('/srv/oak/web/map-profile.js'),
+    'public/map-profile.css': Path('/srv/oak/web/map-profile.css'),
     'server/chat-server.py': Path('/srv/oak/chat-server.py'),
     'server/collect.py': Path('/srv/oak/collect.py'),
     'deploy/nginx.conf': Path('/srv/oak/nginx.conf'),
@@ -49,13 +51,24 @@ def activate(changed):
         run('docker', 'exec', 'oak-web', 'nginx', '-t')
         run('docker', 'exec', 'oak-web', 'nginx', '-s', 'reload')
 
-def health():
+def health(map_assets=None):
     for attempt in range(5):
         try:
             run('systemctl', 'is-active', '--quiet', 'oak-chat', 'oak-web-collector')
             with urllib.request.urlopen('https://oak.fabiomigueldp.me/', timeout=10) as response:
                 if b'Oak' not in response.read():
                     raise RuntimeError('Unexpected dashboard response.')
+            for route in (('/map/', '/map/index.html') if map_assets else ()):
+                with urllib.request.urlopen('https://oak.fabiomigueldp.me' + route, timeout=10) as response:
+                    html = response.read()
+                    profile = html.find(b'/map-profile.js?v=1')
+                    module = html.find(b'type="module"')
+                    if not 0 <= profile < module:
+                        raise RuntimeError('Map quality profile is missing or loads too late.')
+            for asset, expected in (map_assets or {}).items():
+                with urllib.request.urlopen('https://oak.fabiomigueldp.me/' + asset + '?v=1', timeout=10) as response:
+                    if response.read() != expected:
+                        raise RuntimeError('Unexpected map profile asset: ' + asset)
             with urllib.request.urlopen('https://oak.fabiomigueldp.me/status.json', timeout=10) as response:
                 data = json.load(response)
                 if time.time() - data['updated'] > 30:
@@ -87,33 +100,42 @@ def main(sha):
         str(REPO / 'deploy/systemd/oak-chat.service'),
         str(REPO / 'deploy/systemd/oak-web-collector.service'))
     changed = {name for name, target in TARGETS.items()
-               if target.read_bytes() != (REPO / name).read_bytes()}
+               if not target.exists() or target.read_bytes() != (REPO / name).read_bytes()}
     STATE.mkdir(mode=0o750, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     backup = STATE / (stamp + '-' + sha[:12])
     backup.mkdir(mode=0o750)
     manifest = {}
     for name, target in TARGETS.items():
+        if not target.exists():
+            manifest[name] = {'mode': 0o644, 'uid': 0, 'gid': 0, 'existed': False}
+            continue
         stat = target.stat()
         saved = backup / name
         saved.parent.mkdir(parents=True, exist_ok=True)
         saved.write_bytes(target.read_bytes())
-        manifest[name] = {'mode': stat.st_mode & 0o777, 'uid': stat.st_uid, 'gid': stat.st_gid}
+        manifest[name] = {'mode': stat.st_mode & 0o777, 'uid': stat.st_uid, 'gid': stat.st_gid, 'existed': True}
     current = STATE / 'current.json'
     previous = json.loads(current.read_text()) if current.exists() else None
     (backup / 'manifest.json').write_text(json.dumps({'previous': previous, 'files': manifest}, indent=2))
     try:
         # Assets precede HTML so newly referenced assets exist when HTML is served.
         for name in sorted(changed, key=lambda value: value == 'public/index.html'):
-            metadata = manifest[name]
+            metadata = {key: manifest[name][key] for key in ('mode', 'uid', 'gid')}
             install_file(TARGETS[name], (REPO / name).read_bytes(), **metadata)
         activate(changed)
-        health()
+        health({Path(name).name: (REPO / name).read_bytes() for name in TARGETS
+                if name.startswith('public/map-profile.')})
     except Exception:
         for name in changed:
-            install_file(TARGETS[name], (backup / name).read_bytes(), **manifest[name])
+            if manifest[name]['existed']:
+                metadata = {key: manifest[name][key] for key in ('mode', 'uid', 'gid')}
+                install_file(TARGETS[name], (backup / name).read_bytes(), **metadata)
+            else:
+                TARGETS[name].unlink(missing_ok=True)
         activate(changed)
-        health()
+        health({Path(name).name: (backup / name).read_bytes() for name in TARGETS
+                if name.startswith('public/map-profile.') and manifest[name]['existed']})
         print('Deployment rejected; previous files restored.', file=sys.stderr)
         raise
     result = {'commit': sha, 'deployed_at': stamp, 'previous': previous.get('commit') if previous else None}

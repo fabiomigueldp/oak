@@ -52,5 +52,24 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual((self.live / 'status.json').read_text(), 'runtime state')
         self.assertFalse((self.state / 'current.json').exists())
 
+    def test_new_assets_are_installed_and_recorded_as_previously_absent(self):
+        (self.repo / 'public/map-profile.js').write_text('profile')
+        deploy.TARGETS['public/map-profile.js'] = self.live / 'map-profile.js'
+        with patch.object(deploy, 'health'):
+            deploy.main('c' * 40)
+        self.assertEqual((self.live / 'map-profile.js').read_text(), 'profile')
+        manifest = json.loads(next(self.state.glob('*/manifest.json')).read_text())
+        self.assertFalse(manifest['files']['public/map-profile.js']['existed'])
+
+    def test_failed_release_removes_only_newly_introduced_assets(self):
+        (self.repo / 'public/map-profile.js').write_text('profile')
+        deploy.TARGETS['public/map-profile.js'] = self.live / 'map-profile.js'
+        with patch.object(deploy, 'health', side_effect=[RuntimeError('profile missing'), None]):
+            with self.assertRaisesRegex(RuntimeError, 'profile missing'):
+                deploy.main('d' * 40)
+        self.assertFalse((self.live / 'map-profile.js').exists())
+        self.assertEqual((self.live / 'index.html').read_text(), 'previous release')
+        self.assertEqual((self.live / 'status.json').read_text(), 'runtime state')
+
 if __name__ == '__main__':
     unittest.main()

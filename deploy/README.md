@@ -55,7 +55,28 @@ To save Minecraft and prioritize incremental updates around the spawn:
 ssh oracle "sudo /usr/local/sbin/oak-map-update"
 ```
 
-This external command is independent of website deployment. BlueMap currently uses resources for Minecraft `26.3-pre-2`, with a snapshot adapter maintained outside this website repository. High-detail view distance is configured at 1,600 blocks; visitors may retain older browser preferences. Check live configuration before changing it.
+This external command is independent of website deployment. BlueMap currently uses resources for Minecraft `26.3-pre-2`, with a snapshot adapter maintained outside this website repository. The website applies an early quality profile through `public/map-profile.js`, injected by Nginx before the BlueMap module on both `/map/` and `/map/index.html`. Generated map files are not modified by website deployment.
+
+| Profile | Default high detail | Maximum high detail | Default low detail | Resolution multiplier |
+| --- | ---: | ---: | ---: | ---: |
+| Desktop | 250 | 500 | 2,000 | 1 (0.5 above DPR 2) |
+| Mobile / constrained device | 100 | 200 | 1,000 | 0.5 |
+| Manual recovery | 50 | 100 | 1,000 | 0.5 |
+
+Coarse-pointer devices, Android/iOS (including iPad desktop mode), reported RAM of at most 4 GB, at most four logical processors, or Save-Data select the conservative profile. Missing hardware hints do not imply a weak device. Mobile detection does not depend on iframe width. Limits are startup budgets and slider bounds, not a claim that every device can support the maximum. Returning visitors retain cheaper preferences, including disabled high detail; out-of-budget values such as 1,600 migrate to the new default before map loading. The resolution setting remains available in BlueMap, but expensive saved values are normalized on the next load. With unavailable preference storage, adapted configuration defaults still apply.
+
+The synchronous script intercepts only same-origin GET `/map/settings.json` responses. The underlying generated settings remain the source of map lists, URLs, and other configuration. The ordinary BlueMap custom-script hook runs too late for startup budgeting. Review this integration when upgrading BlueMap, especially its settings loader and preference names.
+
+To align the external BlueMap baseline with the reviewed desktop default, explicitly run the following from the deployed, reviewed checkout. This is separate from website deployment and must not run the renderer or restart Minecraft:
+
+```sh
+ssh oracle "sudo python3 /srv/oak/site-repo/scripts/map-defaults.py"
+ssh oracle "sudo python3 /srv/oak/site-repo/scripts/map-defaults.py --apply"
+```
+
+The first command validates the installed 5.23 configuration and prints proposed values. The second backs up `webapp.conf` and `settings.json` under `/srv/oak/map-profile-backups`, then changes only quality defaults and slider maxima. Both files are updated so a future render will not restore the former baseline. It preserves map lists, custom scripts, and all unrelated configuration. A write failure restores previously replaced files. For an intentional rollback, review the printed backup and restore those public configuration files separately from the website commit.
+
+Run `node --test tests/test_map_profile.js` and `node --check public/map-profile.js` alongside the standard checks. Deployment verifies both map entry points and exact profile assets. After publishing, test exploration on real iPhones: Chromium mobile emulation does not validate iOS memory limits or Safari GPU recovery. `window.oakMapProfile` exposes the chosen budget and context-loss count for debugging; no player data or browser telemetry is uploaded.
 
 ## Migration from the initial workspace
 

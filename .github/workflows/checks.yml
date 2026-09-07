@@ -18,3 +18,5 @@ jobs:
           node-version: '22'
       - run: python scripts/check.py
       - run: node --check public/app.js
+      - run: node --check public/map-profile.js
+      - run: node --test tests/test_map_profile.js
