@@ -59,4 +59,4 @@ This external command is independent of website deployment. BlueMap currently us
 
 ## Migration from the initial workspace
 
-The initial working files lived at `C:\Users\fabio\Projects\vostro\output\oak`. The maintained Git checkout is now `C:\Users\fabio\Projects\vostro\oak`. Historical `deploy-web.py` and `deploy-chat.py` provisioned containers and are not part of this repository or the recurring deployment workflow. Do not use the old SCP workflow for files managed here; make changes in Git to prevent drift.
+The initial working files lived at `C:\Users\fabio\Projects\vostro\output\oak`. The maintained Git checkout was moved from `C:\Users\fabio\Projects\vostro\oak` to `C:\Users\fabio\Projects\oak` on 2026-09-07 UTC. Its Git history and remote were preserved. Production paths are unchanged. Historical `deploy-web.py` and `deploy-chat.py` provisioned containers and are not part of this repository or the recurring deployment workflow. Do not use the old SCP workflow for files managed here; make changes in Git to prevent drift.

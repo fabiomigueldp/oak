@@ -18,6 +18,9 @@ Browser -> Caddy HTTPS -> Nginx (oak-web)
 - `tests/`: HTTP validation and rate-limit checks with mocked RCON delivery.
 - `scripts/`: validation and commit-based deployment.
 - `deploy/`: production Nginx/systemd configuration and the deployment runbook.
+- `docs/bluemap-26.3/`: isolated upstream compatibility evidence, owner-supplied screenshots, and a synthetic normalization reference. It does not contain production operations or a native BlueMap patch.
+
+The maintained local checkout is `C:\Users\fabio\Projects\oak`.
 
 Technical documentation is in English. Player-facing copy is Brazilian Portuguese. The visual direction is a restrained dark forest palette, map-first hierarchy, visible keyboard focus, and a stacked mobile layout.
 

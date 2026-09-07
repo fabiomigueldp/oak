@@ -10,4 +10,5 @@ for folder in ('server', 'scripts', 'tests'):
         ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
 subprocess.run([sys.executable, str(ROOT / 'tests/test_chat.py')], check=True)
 subprocess.run([sys.executable, str(ROOT / 'tests/test_deploy.py')], check=True)
+subprocess.run([sys.executable, str(ROOT / 'docs/bluemap-26.3/normalize.py')], check=True)
 print('Python syntax, mocked chat, and isolated deployment checks passed.')
