@@ -19,3 +19,7 @@ Topic: **26.3-pre-2 palette compatibility: omitted defaults and Dappled Forest r
 Link: https://discord.com/channels/665868367416131594/1546329678875336754
 
 The published message and topic were verified in the Discord UI. The report and its two unchanged owner-supplied images are linked from the post. This is a compatibility-evidence submission for maintainer discussion, not a code PR, an accepted patch, or a promise of support. No maintainer approval has been recorded.
+
+## Full external adapter publication
+
+The full converter was extracted into `map/adapter.py` on 2026-09-07 UTC. It includes the NBT codec, palette conversion, MCA rewrite, configurable CLI paths, input/output separation, and report-aware incremental stamps. Five synthetic regression tests cover conversion and filesystem boundaries. Production-specific paths and orchestration are excluded; this does not install a new renderer or change native BlueMap code. A follow-up to the existing discussion will identify this distinction explicitly.

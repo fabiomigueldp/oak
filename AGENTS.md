@@ -8,3 +8,4 @@
 - Production: `https://oak.fabiomigueldp.me`, SSH alias `oracle`. Deploy an exact reviewed commit with `sudo /usr/local/sbin/oak-site-deploy <commit-sha>`; see `deploy/README.md`.
 - Do not restart Minecraft, replace map data, change firewall/DNS, or run historical provisioning scripts as part of a website deployment. Keep runtime state outside Git.
 - Local checkout: `C:\Users\fabio\Projects\oak`. Upstream compatibility material lives in `docs/bluemap-26.3/`; keep it independent of deployment details. Read BlueMap's contribution guidelines before any upstream submission and disclose AI assistance accurately.
+- The full external adapter is in `map/adapter.py`; its synthetic NBT/MCA regression suite is `tests/test_map_adapter.py`. Keep inputs read-only, preserve palette order and packed indices, and require separate output paths. Website deployment must not install or run this adapter automatically.

@@ -22,7 +22,7 @@ The compatibility workaround used an isolated copy of the world and:
 4. Applied explicit saved properties over those defaults.
 5. Preserved palette order and packed indices, then rebuilt the map with matching client resources.
 
-The original world was not modified. No Minecraft JAR, registry dump, private world, player data, raw log, hostname, or infrastructure configuration is distributed with this evidence package. The original deployment-specific converter is not included; `normalize.py` is a small standalone illustration of its state-normalization rule.
+The original world was not modified. No Minecraft JAR, registry dump, private world, player data, raw log, hostname, or infrastructure configuration is distributed with this evidence package. The [full portable external adapter](../../map/README.md) is now available with NBT/MCA rewriting and regression tests. Production-specific orchestration is excluded. `normalize.py` remains a small standalone illustration of the state-normalization rule. Neither file is a native BlueMap patch.
 
 ## Minimal data cases
 
