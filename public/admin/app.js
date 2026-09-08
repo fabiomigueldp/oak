@@ -23,6 +23,7 @@ const state = {
   generation: 0,
   dirty: false,
   stream: null,
+  overviewReceived: 0,
 };
 const paths = {
   sun: "M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0",
@@ -392,6 +393,7 @@ async function showJob(id, background = false) {
 }
 function applyOverview(data) {
   if (!state.session) return;
+  state.overviewReceived = Date.now();
   state.overview = data;
   if (state.detailJob) {
     const updated = data.jobs?.find((j) => j.id === state.detailJob.id);
@@ -807,10 +809,17 @@ function updateWorld() {
           : "BlueMap · visão 3D",
     ),
   );
+  sendWorldPlayers();
+}
+function sendWorldPlayers() {
+  if (!worldFrame || !state.session || state.page !== "world") return;
+  const s = state.historySample || snapshot();
+  const fresh =
+    s.fresh && (state.historySample || Date.now() / 1000 - s.sampled_at < 30);
   worldFrame.contentWindow.postMessage(
     {
       type: "oak-admin-players",
-      players: s.fresh ? s.players : [],
+      players: fresh ? s.players : [],
       sampled_at: s.sampled_at,
       follow: following,
       history: Boolean(state.historySample),
@@ -818,6 +827,25 @@ function updateWorld() {
     location.origin,
   );
 }
+let worldRefreshPending = false;
+setInterval(async () => {
+  if (!state.session || state.page !== "world") return;
+  // Keep the iframe lease alive independently of SSE event frequency.
+  sendWorldPlayers();
+  if (
+    worldRefreshPending ||
+    (snapshot().fresh && Date.now() - state.overviewReceived < 10000)
+  )
+    return;
+  worldRefreshPending = true;
+  try {
+    await refresh();
+  } catch {
+    // The existing stale-state notice covers connection loss; never renew old samples.
+  } finally {
+    worldRefreshPending = false;
+  }
+}, 5000);
 function timeline() {
   const range = input(0, "range");
   range.min = 0;
