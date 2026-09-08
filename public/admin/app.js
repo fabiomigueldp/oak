@@ -251,7 +251,7 @@ function form(title, fields, label, action) {
   return f;
 }
 
-async function operation(kind, params = {}) {
+async function operation(kind, params = {}, { onQueued } = {}) {
   const spec = state.overview.capabilities?.[kind];
   if (!spec) throw new Error("Sua conta não tem permissão para esta ação.");
   const key = crypto.randomUUID();
@@ -262,11 +262,8 @@ async function operation(kind, params = {}) {
       "POST",
       { "Idempotency-Key": key },
     );
-    if (
-      kind === "settings_apply" ||
-      (kind === "environment_apply" && params.action === "configure")
-    )
-      state.dirty = false;
+    if (kind === "settings_apply") state.dirty = false;
+    onQueued?.(job);
     $("#review-dialog").close();
     toast("Operação adicionada à fila.");
     await showJob(job.id);
@@ -276,7 +273,7 @@ async function operation(kind, params = {}) {
   const review = await api("/reviews", { kind, params });
   const content = $("#review-content");
   const confirm = button(
-    "Confirmar e executar",
+    kind === "environment_apply" ? "Aplicar no servidor" : "Confirmar e executar",
     () => submit(review.id),
     "button " + (kind === "restore_backup" ? "danger" : "primary"),
   );

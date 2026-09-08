@@ -33,6 +33,8 @@ export async function renderEnvironment(ctx) {
   let draft = structuredClone(current.policy);
   let revision = current.revision;
   let baseline = JSON.stringify(draft);
+  let formError = "";
+  let pendingJob = null;
   const editable = can("environment_apply");
   const controls = new Map();
   const weatherNames = {
@@ -46,6 +48,8 @@ export async function renderEnvironment(ctx) {
   const notice = el("p", "notice");
   notice.setAttribute("role", "status");
   const editor = el("form", "environment-editor");
+  // Handle invalid controls explicitly, including controls inside closed details.
+  editor.noValidate = true;
   const total = el("span", "environment-total");
   const timeline = el("div", "environment-timeline");
   const segments = phases.map((key, index) => {
@@ -57,7 +61,7 @@ export async function renderEnvironment(ctx) {
     timeline.append(segment);
     return segment;
   });
-  const save = el("button", "button primary", "Revisar alterações");
+  const save = el("button", "button primary", "Revisar e aplicar");
   save.type = "submit";
   const reset = button(
     "Descartar",
@@ -65,20 +69,25 @@ export async function renderEnvironment(ctx) {
       draft = structuredClone(current.policy);
       revision = current.revision;
       baseline = JSON.stringify(draft);
+      formError = "";
       sync();
+      status();
     },
     "button ghost",
   );
-  function sync() {
+  function sync(writeValues = true) {
     for (const [key, control] of controls) {
       const rule = key.startsWith("rules.");
       const value = rule
         ? (draft.rules[key.slice(6)] ?? current.rules[key.slice(6)])
         : draft[key];
-      if (control.type === "checkbox") control.checked = value;
-      else control.value = value;
+      if (writeValues) {
+        if (control.type === "checkbox") control.checked = value;
+        else control.value = value;
+      }
       control.disabled =
         !editable ||
+        !!pendingJob ||
         !!current.error ||
         (phases.includes(key) && draft.cycle !== "custom") ||
         ([
@@ -107,13 +116,14 @@ export async function renderEnvironment(ctx) {
     state.dirty = JSON.stringify(draft) !== baseline;
     save.disabled =
       !editable ||
+      !!pendingJob ||
       !!current.error ||
       current.revision !== revision ||
       (!state.dirty && !current.drift);
     save.textContent = current.drift
       ? "Revisar e retomar controle"
-      : "Revisar alterações";
-    reset.disabled = !state.dirty && revision === current.revision;
+      : "Revisar e aplicar";
+    reset.disabled = !!pendingJob || (!state.dirty && revision === current.revision);
   }
   function control(key, label, options, description, bounds = {}) {
     const rule = key.startsWith("rules.");
@@ -124,10 +134,15 @@ export async function renderEnvironment(ctx) {
       ? select(options, value)
       : input(value, typeof value === "boolean" ? "checkbox" : "number");
     if (node.type === "number")
-      Object.assign(node, { min: 0.25, max: 240, step: 0.25, ...bounds });
+      Object.assign(node, { min: 0.25, max: 240, step: "any", required: true, ...bounds });
     if (node.type === "checkbox") node.checked = value;
-    node.addEventListener("change", () => {
-      if (node.type === "number" && !node.reportValidity()) return;
+    const update = () => {
+      if (node.type === "number" && !node.validity.valid) {
+        state.dirty = true;
+        save.disabled = !editable || !!pendingJob || !!current.error;
+        draftStatus.textContent = "Alterações locais · ainda não aplicadas";
+        return;
+      }
       const next =
         node.type === "checkbox"
           ? node.checked
@@ -136,8 +151,11 @@ export async function renderEnvironment(ctx) {
             : node.value;
       if (rule) draft.rules[key.slice(6)] = next;
       else draft[key] = next;
-      sync();
-    });
+      formError = "";
+      sync(node.type !== "number");
+      status();
+    };
+    node.addEventListener(node.type === "number" ? "input" : "change", update);
     controls.set(key, node);
     const result = field(label, node, description);
     if (node.type === "checkbox") result.classList.add("environment-toggle");
@@ -231,19 +249,31 @@ export async function renderEnvironment(ctx) {
       "As regras editadas são mantidas após reiniciar. Retornar o ciclo ou o clima ao Minecraft não desfaz essas regras.",
     ),
   );
+  const draftStatus = el("span", "muted");
+  draftStatus.setAttribute("role", "status");
   const footer = el(
     "div",
     "environment-save",
-    el("span", "muted", "Alterações entram em vigor sem reiniciar."),
+    draftStatus,
     el("div", "page-actions", reset, save),
   );
   editor.append(cycle, weather, ruleDetails, footer);
   editor.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (save.disabled || !editor.reportValidity()) return;
+    if (save.disabled) return;
+    const invalid = [...controls.values()].find(node => node.willValidate && !node.validity.valid);
+    if (invalid) {
+      const details = invalid.closest("details");
+      if (details) details.open = true;
+      formError = `${invalid.closest("label").querySelector("span").textContent}: ${invalid.validationMessage}`;
+      status();
+      invalid.focus();
+      invalid.reportValidity();
+      return;
+    }
     if (draft.clear_min > draft.clear_max || draft.rain_min > draft.rain_max) {
-      notice.textContent = "O mínimo deve ser menor ou igual ao máximo.";
-      notice.hidden = false;
+      formError = "O mínimo deve ser menor ou igual ao máximo.";
+      status();
       return;
     }
     save.disabled = true;
@@ -252,12 +282,12 @@ export async function renderEnvironment(ctx) {
         action: "configure",
         revision,
         policy: structuredClone(draft),
-      });
+      }, { onQueued: job => { pendingJob = job.id; formError = ""; sync(); status(); } });
     } catch (error) {
-      notice.textContent = error.message;
-      notice.hidden = false;
+      formError = error.message;
+      status();
     } finally {
-      save.disabled = false;
+      save.disabled = !!pendingJob;
     }
   });
   const profiles = panel("Pontos de partida");
@@ -295,7 +325,9 @@ export async function renderEnvironment(ctx) {
       "",
       () => {
         Object.assign(draft, values);
+        formError = "";
         sync();
+        status();
       },
       "environment-preset",
     );
@@ -340,6 +372,7 @@ export async function renderEnvironment(ctx) {
   const aside = el("aside", "environment-aside", profiles, intervention);
   root.append(live, notice, el("div", "environment-layout", editor, aside));
   function status() {
+    draftStatus.textContent = pendingJob ? "Aplicando no servidor… aguardando confirmação" : formError ? `Não aplicado · ${formError}` : state.dirty ? "Alterações locais · ainda não aplicadas" : `Configuração ativa no servidor · revisão ${current.revision}`;
     const phase = ((current.clock % 24000) + 24000) % 24000;
     const name =
       phase < 12000
@@ -363,7 +396,7 @@ export async function renderEnvironment(ctx) {
       ),
     );
     notice.textContent =
-      current.error ||
+      formError || current.error ||
       (current.revision !== revision
         ? "O ambiente mudou. Descarte o rascunho para carregar a configuração atual."
         : current.drift
@@ -374,7 +407,8 @@ export async function renderEnvironment(ctx) {
       release.disabled =
       overrideWeather.disabled =
       duration.disabled =
-        !editable || !!current.error || current.drift;
+        !editable || !!pendingJob || !!current.error || current.drift;
+    for (const preset of profiles.querySelectorAll("button")) preset.disabled = !editable || !!pendingJob || !!current.error;
     release.hidden = !current.override;
   }
   sync();
@@ -382,11 +416,24 @@ export async function renderEnvironment(ctx) {
   async function poll() {
     if (generation !== state.generation || !state.session) return;
     try {
+      let applied = false;
+      let settled = false;
+      if (pendingJob) {
+        const job = await api(`/jobs/${encodeURIComponent(pendingJob)}`);
+        if (generation !== state.generation) return;
+        if (["completed", "failed", "interrupted", "cancelled"].includes(job.state)) {
+          settled = true;
+          applied = job.state === "completed";
+          if (!applied) formError = job.error || "A aplicação não foi confirmada. Seu rascunho foi preservado; confira a operação antes de tentar novamente.";
+        }
+      }
       const next = await api("/environment");
       if (generation !== state.generation) return;
       if (!next.available)
         throw new Error(next.message || "Controlador indisponível.");
       current = next;
+      if (settled) pendingJob = null;
+      if (applied) state.dirty = false;
       if (!state.dirty) {
         if (revision !== current.revision) {
           draft = structuredClone(current.policy);
@@ -395,8 +442,10 @@ export async function renderEnvironment(ctx) {
           sync();
         }
       }
+      if (settled) sync();
       save.disabled =
         !editable ||
+        !!pendingJob ||
         !!current.error ||
         current.revision !== revision ||
         (!state.dirty && !current.drift);
