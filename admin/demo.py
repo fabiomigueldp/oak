@@ -6,6 +6,7 @@ import time
 import uuid
 
 from .domain import FIELDS, validate
+from .environment import DEFAULTS, RULES, environment_changes
 from .store import encode
 
 
@@ -16,6 +17,10 @@ class DemoAgent:
         self.pending_restart = False
         self.last_save = self.started - 600
         self.receipts = {}
+        self.environment_state = {'available': True, 'revision': 0, 'policy': copy.deepcopy(DEFAULTS),
+            'fields': RULES, 'drift': False, 'error': '', 'clock': 6000, 'rate': 1, 'paused': False,
+            'weather': 'clear', 'next_weather_seconds': 0,
+            'rules': {key: (100 if key == 'players_sleeping_percentage' else 3 if key == 'random_tick_speed' else key != 'keep_inventory') for key in RULES}}
         self.values = {'difficulty': 'normal', 'gamemode': 'survival', 'max-players': 12, 'view-distance': 20, 'simulation-distance': 6, 'white-list': False, 'enforce-whitelist': False, 'spawn-protection': 16, 'player-idle-timeout': 0, 'motd': 'Oak · um mundo compartilhado'}
         self.points = []
         for age, name, tested in ((1800, 'Antes da nova trilha', True), (7200, 'Rotina da manhã', False), (86400, 'Primeiras construções', True)):
@@ -43,6 +48,13 @@ class DemoAgent:
             return copy.deepcopy(self.points)
         if method == 'configuration':
             return self.configuration()
+        if method == 'environment':
+            env = self.environment_state
+            if env.get('override', {}).get('expires', float('inf')) <= time.time():
+                env.pop('override')
+                env['weather'] = 'clear'
+            env['sampled_at'] = time.time()
+            return copy.deepcopy(env)
         if method == 'logs':
             return {'service': data['service'], 'lines': ['[demonstration] Server ready. No production commands are sent.', '[demonstration] World save completed.'], 'sampled_at': time.time()}
         if method == 'receipt':
@@ -54,6 +66,10 @@ class DemoAgent:
                 if params['revision'] != self.configuration()['revision']:
                     raise ValueError('Configuration changed. Reload and review again.')
                 preview['changes'] = [{'key': k, 'label': FIELDS[k]['label'], 'before': self.values[k], 'after': v} for k, v in params['changes'].items()]
+            if kind == 'environment_apply':
+                if params['revision'] != self.environment_state['revision']:
+                    raise ValueError('Environment changed. Reload and review again.')
+                preview['changes'] = environment_changes(self.environment_state, params)
             if kind == 'console':
                 preview['command'] = params['command']
             return preview
@@ -67,7 +83,23 @@ class DemoAgent:
                     progress(step, 'Local demonstration. No production effect.')
                 time.sleep(.3)
             result = {'demonstration': True}
-            if kind in ('backup', 'maintenance'):
+            if kind == 'environment_apply':
+                env = self.environment_state
+                if params['revision'] != env['revision']:
+                    raise ValueError('Environment changed after review.')
+                if params['action'] == 'configure':
+                    env['policy'] = copy.deepcopy(params['policy'])
+                    env['rules'].update(params['policy']['rules'])
+                    env['paused'] = params['policy']['cycle'] == 'paused'
+                elif params['action'] == 'override':
+                    env['override'] = {'weather': params['weather'], 'expires': time.time() + params['minutes'] * 60}
+                    env['weather'] = params['weather']
+                else:
+                    env.pop('override', None)
+                    env['weather'] = 'clear'
+                env['revision'] += 1
+                result.update(copy.deepcopy(env))
+            elif kind in ('backup', 'maintenance'):
                 identifier = 'control-' + jid + '.tar.gz'
                 self.points.insert(0, {'id': identifier, 'name': params.get('name', 'Antes da manutenção'), 'created': time.time(), 'bytes': 689 * 1024 * 1024, 'source': 'oak', 'integrity': True, 'restoration': None, 'replicated': False, 'fingerprint': hashlib.sha256(identifier.encode()).hexdigest(), 'manifest': {'versions': ['26.3-pre-2']}})
                 result['backup'] = identifier

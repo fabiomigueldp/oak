@@ -2,6 +2,7 @@
 export const PAGES = {
   now: "Agora",
   world: "Mundo",
+  environment: "Ambiente",
   players: "Jogadores",
   backups: "Backups",
   operations: "Operações",

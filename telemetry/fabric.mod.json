@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "id": "oak_telemetry",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "Oak Telemetry",
-  "description": "Private, read-only player telemetry for Oak Control.",
+  "description": "Private player telemetry and typed environment control for Oak Control.",
   "environment": "server",
   "entrypoints": { "main": ["me.oak.telemetry.OakTelemetry"] },
   "depends": {

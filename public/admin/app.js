@@ -1,3 +1,4 @@
+import { renderEnvironment } from "./environment.js";
 import {
   PAGES,
   ROLES,
@@ -255,13 +256,17 @@ async function operation(kind, params = {}) {
   if (!spec) throw new Error("Sua conta não tem permissão para esta ação.");
   const key = crypto.randomUUID();
   const submit = async (review) => {
-    if (kind === "settings_apply") state.dirty = false;
     const job = await api(
       "/jobs",
       { kind, params, ...(review ? { review } : {}) },
       "POST",
       { "Idempotency-Key": key },
     );
+    if (
+      kind === "settings_apply" ||
+      (kind === "environment_apply" && params.action === "configure")
+    )
+      state.dirty = false;
     $("#review-dialog").close();
     toast("Operação adicionada à fila.");
     await showJob(job.id);
@@ -723,6 +728,7 @@ async function renderWorld() {
       heading(
         "Mundo",
         null,
+        button("Ambiente", () => navigate("environment"), "button", "sun"),
         can("map_refresh") &&
           button(
             "Atualizar terreno",
@@ -1520,6 +1526,20 @@ async function navigate(page) {
     await {
       now: renderNow,
       world: renderWorld,
+      environment: () =>
+        renderEnvironment({
+          el,
+          button,
+          field,
+          input,
+          select,
+          heading,
+          api,
+          operation,
+          state,
+          navigate,
+          can,
+        }),
       players: renderPlayers,
       backups: renderBackups,
       operations: renderOperations,

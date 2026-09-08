@@ -1,0 +1,212 @@
+@layer views {
+  .environment-live {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 24px;
+    padding: 18px 0 24px;
+    border-top: 1px solid var(--line);
+  }
+  .environment-live strong {
+    color: var(--accent);
+    font-size: 1.3rem;
+    font-weight: 550;
+  }
+  .environment-live .muted {
+    margin-left: auto;
+    font-size: 0.85rem;
+  }
+  .environment-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(230px, 290px);
+    gap: 24px;
+    align-items: start;
+  }
+  .environment-editor,
+  .environment-aside {
+    display: grid;
+    gap: 20px;
+    min-width: 0;
+  }
+  .environment-panel {
+    padding: 24px;
+    background: var(--panel);
+    border: 1px solid var(--soft-line);
+    border-radius: 16px;
+    min-width: 0;
+  }
+  .environment-panel h2 {
+    font-size: 1.1rem;
+    font-weight: 550;
+    margin: 0 0 22px;
+  }
+  .environment-cycle-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .environment-cycle-top .field {
+    flex: 1;
+    max-width: 230px;
+  }
+  .environment-total {
+    font-size: 0.9rem;
+    color: var(--accent);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .environment-timeline {
+    display: flex;
+    gap: 4px;
+    height: 42px;
+    margin: 24px 0;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .environment-phase {
+    flex-basis: 0;
+    min-width: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 0.75rem;
+    overflow: hidden;
+    color: transparent;
+  }
+  .phase-day {
+    background: oklch(77% 0.07 95);
+  }
+  .phase-dusk {
+    background: oklch(65% 0.07 50);
+  }
+  .phase-night {
+    background: oklch(42% 0.05 260);
+  }
+  .phase-dawn {
+    background: oklch(69% 0.05 155);
+  }
+  .environment-phases {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .environment-pairs,
+  .environment-rule-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 20px;
+  }
+  .environment-panel .field {
+    margin: 0;
+    min-width: 0;
+  }
+  .environment-panel input,
+  .environment-panel select {
+    width: 100%;
+    min-width: 0;
+  }
+  .environment-note {
+    font-size: 0.82rem;
+    line-height: 1.55;
+    margin: 20px 0 0;
+  }
+  .environment-save {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 0 20px;
+  }
+  .environment-save > span {
+    font-size: 0.82rem;
+  }
+  .environment-preset {
+    display: grid;
+    gap: 6px;
+    width: 100%;
+    padding: 16px 0;
+    background: none;
+    text-align: left;
+    border: 0;
+    border-top: 1px solid var(--soft-line);
+    cursor: pointer;
+    color: var(--text);
+  }
+  .environment-preset:first-of-type {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .environment-preset:last-child {
+    padding-bottom: 0;
+  }
+  .environment-preset:hover strong {
+    color: var(--accent);
+  }
+  .environment-preset strong {
+    font-weight: 550;
+  }
+  .environment-preset small {
+    color: var(--muted);
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+  .environment-aside .field + .field {
+    margin-top: 18px;
+  }
+  .environment-aside .button {
+    width: 100%;
+    margin-top: 16px;
+  }
+  .environment-rules summary {
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: 550;
+  }
+  .environment-toggle {
+    display: grid;
+    grid-template-columns: 1fr 22px;
+    align-items: center;
+    gap: 8px 16px;
+  }
+  .environment-toggle input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    margin: 0;
+  }
+  .environment-toggle small {
+    grid-column: 1/-1;
+  }
+  @media (max-width: 1050px) {
+    .environment-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .environment-aside {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 600px) {
+    .environment-aside {
+      grid-template-columns: 1fr;
+    }
+    .environment-panel {
+      padding: 20px;
+    }
+    .environment-phases {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .environment-save {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .environment-live .muted {
+      margin-left: 0;
+      width: 100%;
+    }
+    .environment-rule-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+}

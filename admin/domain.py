@@ -4,6 +4,7 @@ import re
 
 ROLES = {'owner': 3, 'administrator': 2, 'moderator': 1, 'observer': 0}
 OPERATIONS = {
+    'environment_apply': {'label': 'Ajustar ambiente', 'role': 2, 'review': True, 'schedule': False},
     'save': {'label': 'Salvar mundo', 'role': 2, 'review': False, 'schedule': True},
     'backup': {'label': 'Criar backup', 'role': 2, 'review': False, 'schedule': True},
     'verify_backup': {'label': 'Verificar backup', 'role': 2, 'review': False, 'schedule': False},
@@ -69,6 +70,9 @@ def validate(kind, params, role='owner'):
         raise PermissionError('This role cannot perform this operation.')
     if not isinstance(params, dict):
         raise ValueError('Operation parameters must be an object.')
+    if kind == 'environment_apply':
+        from .environment import validate_environment
+        return validate_environment(params)
     p = dict(params)
     allowed = {
         'save': set(), 'backup': {'name'}, 'verify_backup': {'backup', 'boot'}, 'restore_backup': {'backup', 'fingerprint'},

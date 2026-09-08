@@ -374,6 +374,11 @@ def create_app(settings=None, agent=None, *, background=True):
         store.set('backups', points)
         return {'backups': points, 'policy': {'location': 'Oracle VM', 'external_copy': False, 'max_points': 14, 'budget_bytes': 20 * 1024 ** 3, 'free_reserve_bytes': 20 * 1024 ** 3, 'legacy_managed_separately': True}}
 
+    @app.get(API + '/environment')
+    async def environment(request: Request):
+        current(request)
+        return await asyncio.to_thread(agent.call, 'environment')
+
     @app.get(API + '/configuration')
     async def configuration(request: Request):
         current(request, 2)

@@ -82,6 +82,8 @@ class AgentHandler(socketserver.StreamRequestHandler):
             runtime = self.server.runtime
             if method == 'snapshot':
                 result = runtime.snapshot()
+            elif method == 'environment':
+                result = runtime.environment()
             elif method == 'backups':
                 result = runtime.backups()
             elif method == 'configuration':

@@ -1,5 +1,10 @@
 # Oak player telemetry
 
+Version 1.2 adds a separate typed environment controller. Player telemetry remains
+read-only; environment writes use their own owner-only socket and root agent.
+See [World environment controller](../docs/world-environment.md) for behavior,
+persistence, supported controls, and isolated integration verification.
+
 Optional server-only Fabric mod pinned to Minecraft **26.3-pre-2**, Fabric Loader
 0.19.5+, and the installed Fabric lifecycle API. Compile with Java 25 against the
 installed unobfuscated server and processed Fabric API jars. No remapper or

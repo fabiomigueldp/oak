@@ -21,6 +21,7 @@ import uuid
 
 from .domain import BACKUP, FIELDS, NAME, validate
 from .telemetry import snapshot as live_snapshot
+from .environment import environment_call, environment_changes, RULES as ENVIRONMENT_RULES
 
 GIB = 1024 ** 3
 SERVICES = ('oak.service', 'oak-map.service', 'oak-backup.service', 'oak-geyser.service', 'oak-bedrock-bridge.service', 'oak-chat.service', 'oak-web-collector.service')
@@ -499,10 +500,27 @@ class Runtime:
             if stage.is_dir() and stage.parent == self.control / 'drills':
                 shutil.rmtree(stage)
 
+    def environment(self):
+        try:
+            result = environment_call({'action': 'status'})
+            result['fields'] = ENVIRONMENT_RULES
+            return result
+        except OSError:
+            return {'available': False, 'message': 'O controlador de ambiente está indisponível.', 'fields': ENVIRONMENT_RULES}
+
     def preview(self, kind, params):
         params = validate(kind, params)
         result = {'kind': kind, 'params': params, 'steps': [], 'impact': '', 'requires_confirmation': True}
-        if kind == 'restore_backup':
+        if kind == 'environment_apply':
+            current = self.environment()
+            if not current.get('available') or current['revision'] != params['revision']:
+                raise ValueError('O ambiente mudou. Atualize e revise novamente.')
+            result.update(impact='A alteração entra em vigor no jogo sem reiniciar. Reverter regras não desfaz danos ou progresso.',
+                steps=['Verificar revisão e permissões', 'Persistir política', 'Aplicar no servidor e registrar resultado'])
+            result['changes'] = environment_changes(current, params)
+            if params['action'] != 'configure':
+                result['impact'] = ('O clima será alterado temporariamente e depois retomará o perfil ativo.' if params['action'] == 'override' else 'A intervenção temporária será encerrada e o perfil ativo será retomado.')
+        elif kind == 'restore_backup':
             path = self.backup_path(params['backup'])
             fingerprint = sha256(path)
             if fingerprint != params['fingerprint']:
@@ -699,6 +717,9 @@ class Runtime:
             if (self.control / 'restore-pending.json').exists():
                 raise RuntimeError('An interrupted restoration needs operator recovery before further world operations.')
             self.recover_saving()
+            if kind == 'environment_apply':
+                progress('Aplicando ambiente', 'Persisting the reviewed policy through the private control socket.')
+                return environment_call({**params, 'id': job})
             if kind == 'backup':
                 return self.backup(job, params['name'], progress)
             if kind == 'verify_backup':

@@ -20,7 +20,7 @@ jars = sorted((server / 'libraries').rglob('*.jar')) + sorted((server / '.fabric
 jars.append(server / 'versions/26.3-pre-2/server-26.3-pre-2.jar')
 classes = output / 'classes'
 classes.mkdir(exist_ok=True)
-subprocess.run([str(args.jdk / 'bin/javac'), '--release', '25', '-cp', ':'.join(map(str, jars)), '-d', str(classes), str(root / 'src/me/oak/telemetry/OakTelemetry.java')], check=True)
+subprocess.run([str(args.jdk / 'bin/javac'), '--release', '25', '-cp', ':'.join(map(str, jars)), '-d', str(classes), *map(str, sorted((root / 'src').rglob('*.java')))], check=True)
 artifact = output / 'oak-telemetry-1.0.0.jar'
 with zipfile.ZipFile(artifact, 'w', zipfile.ZIP_DEFLATED) as jar:
     for path in sorted(classes.rglob('*.class')):

@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** Read-only tick snapshots. All serialization and socket I/O run off-thread. */
 public final class OakTelemetry implements ModInitializer {
-    private static final Path PATH = Path.of("/run/oak-telemetry/positions.sock");
+    private static final Path PATH = Path.of(System.getProperty("oak.telemetry.socket", "/run/oak-telemetry/positions.sock"));
     private record Equipment(String id, String asset, int color, boolean enchanted) {}
     private record Appearance(String textures, Map<String, Equipment> equipment, String main_arm) {}
     private record Player(String uuid, String name, List<Double> position, String dimension, float yaw,
@@ -39,14 +39,20 @@ public final class OakTelemetry implements ModInitializer {
     private ServerSocketChannel listener;
     private boolean ownsSocket;
     private long tick;
+    private EnvironmentController environment;
     private final Map<String, Appearance> appearances = new HashMap<>();
     private final Map<String, Float> swings = new HashMap<>();
     private final Map<String, Long> swingIds = new HashMap<>();
 
     @Override public void onInitialize() {
-        ServerLifecycleEvents.SERVER_STARTED.register(server -> start());
-        ServerLifecycleEvents.SERVER_STOPPING.register(server -> close());
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            start();
+            try { environment = new EnvironmentController(server); }
+            catch (Exception e) { System.err.println("Oak environment unavailable: " + e.getClass().getSimpleName()); }
+        });
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> { if (environment != null) environment.close(); close(); });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            if (environment != null) try { environment.tick(); } catch (Exception e) { environment.fail(); }
             ++tick;
             // Observe short arm actions each tick; only publish at the bounded rate.
             for (var p : server.getPlayerList().getPlayers()) {
