@@ -298,6 +298,36 @@ class Runtime:
         if shutil.disk_usage(self.root).free < self.free_reserve + size:
             raise RuntimeError('Insufficient disk space after preserving the recovery reserve.')
 
+    def stable_copy(self, stage, progress, attempts=8):
+        """Reconcile background chunk/entity writes without accepting a mixed copy."""
+        before, copied = self.inventory(self.server), {}
+        deadline = time.monotonic() + 120
+        for attempt in range(attempts):
+            for filename in copied.keys() - before.keys():
+                (stage / filename).unlink(missing_ok=True)
+            copied = {name: value for name, value in copied.items() if name in before}
+            for filename, metadata in before.items():
+                if time.monotonic() > deadline:
+                    raise RuntimeError('The consistent copy exceeded its 120-second saving budget.')
+                if copied.get(filename) == metadata:
+                    continue
+                destination = stage / filename
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    shutil.copy2(self.server / filename, destination)
+                    copied[filename] = metadata
+                except FileNotFoundError:
+                    # A disappearing source is reconciled in the next complete inventory.
+                    destination.unlink(missing_ok=True)
+                    copied.pop(filename, None)
+            after = self.inventory(self.server)
+            if before == after and copied == after:
+                return after
+            progress('Sincronizando gravações em andamento', f'Consistency pass {attempt + 1}; reconciling changed files only.')
+            before = after
+            time.sleep(.25)
+        raise RuntimeError('Source files did not settle within the consistent-copy budget. Retry at a quieter time.')
+
     def backup(self, job, name, progress):
         target = self.backups_dir / ('control-' + job + '.tar.gz')
         if target.exists():
@@ -322,14 +352,8 @@ class Runtime:
                         response = self.rcon.command('save-all flush')
                         if 'Saved' not in response:
                             raise RuntimeError('The world flush was not confirmed.')
-                    before = self.inventory(self.server)
                     progress('Copiando estado', 'Copying to a separate staging directory.')
-                    for filename in before:
-                        destination = stage / filename
-                        destination.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(self.server / filename, destination)
-                    if before != self.inventory(self.server):
-                        raise RuntimeError('Source files changed during the snapshot. Retry at a quieter time.')
+                    before = self.stable_copy(stage, progress)
                 finally:
                     if marker.exists():
                         self.rcon.command('save-on')

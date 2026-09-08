@@ -10,6 +10,7 @@ import secrets
 import struct
 import sys
 import socketserver
+import shutil
 import threading
 import tarfile
 import tempfile
@@ -293,6 +294,37 @@ class RuntimeTests(unittest.TestCase):
                 self.runtime.execute(str(uuid.uuid4()), 'backup', {'name': 'Failing'}, self.progress)
         self.assertEqual(self.runtime.rcon.command.call_args_list[-1].args, ('save-on',))
         self.assertFalse(list(self.runtime.backups_dir.glob('*.tar.gz')))
+
+    def test_background_write_is_recopied_before_a_checkpoint_is_accepted(self):
+        original_copy = shutil.copy2
+        changed = False
+        expected = gzip.compress(b'\x0a\x00\x00\x00updated')
+        def copy_then_change(source, destination):
+            nonlocal changed
+            result = original_copy(source, destination)
+            if str(source).endswith('level.dat') and not changed:
+                changed = True
+                Path(source).write_bytes(expected)
+            return result
+        with patch('admin.runtime.shutil.copy2', side_effect=copy_then_change):
+            result = self.runtime.execute(str(uuid.uuid4()), 'backup', {'name': 'Settled'}, self.progress)
+        with tarfile.open(self.runtime.backup_path(result['backup'])) as archive:
+            self.assertEqual(archive.extractfile('world/level.dat').read(), expected)
+        self.assertTrue(any(call.args[0] == 'Sincronizando gravações em andamento' for call in self.progress.call_args_list))
+
+    def test_continuously_changing_source_is_never_accepted(self):
+        original_copy = shutil.copy2
+        def copy_then_change(source, destination):
+            result = original_copy(source, destination)
+            if str(source).endswith('level.dat'):
+                with Path(source).open('ab') as file:
+                    file.write(b'changing')
+            return result
+        stage = self.runtime.control / 'synthetic-stage'
+        stage.mkdir()
+        with patch('admin.runtime.shutil.copy2', side_effect=copy_then_change):
+            with self.assertRaisesRegex(RuntimeError, 'did not settle'):
+                self.runtime.stable_copy(stage, self.progress, attempts=2)
 
     def test_archive_traversal_links_and_false_world_are_rejected(self):
         for index, entry in enumerate((('../escape', b'bad', tarfile.REGTYPE), ('world/link', b'/etc/passwd', tarfile.SYMTYPE), ('mods/device', b'', tarfile.CHRTYPE))):

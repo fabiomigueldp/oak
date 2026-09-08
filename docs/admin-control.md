@@ -136,7 +136,11 @@ New checkpoints live in `/srv/oak/control/backups`, separate from the existing
 `/srv/oak/backups` routine. Oak takes the existing backup lock as well. For an
 online game, it persists save-disabled intent, disables saving, requires a
 confirmed `save-all flush`, copies the approved inventory and checks that the
-source remained stable. Saving is re-enabled in `finally`, before compression.
+source matches the staged copy. Background chunk/entity writes observed on the
+live 26.3-pre-2 server can continue after the flush. The copier reconciles changed
+files across at most eight passes and a 120-second saving budget. It requires a
+stable complete inventory before accepting the checkpoint; continuously changing
+inputs fail closed. Saving is re-enabled in `finally`, before compression.
 A persistent marker and systemd stop hook cover agent failure. This captures
 Minecraft's flushed world; it cannot guarantee transactions in arbitrary future
 mods with external databases.
