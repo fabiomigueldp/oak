@@ -467,7 +467,7 @@ class Runtime:
                 runner = Path(__file__).with_name('drill.py').resolve()
                 output = run(['systemd-run', '--quiet', '--wait', '--pipe', '--collect', '--unit=oak-drill-' + job,
                               '--property=User=oak', '--property=Group=oak', '--property=PrivateNetwork=yes',
-                              '--property=NoNewPrivileges=yes', '--property=ProtectSystem=strict', '--property=ProtectHome=yes',
+                              '--property=NoNewPrivileges=yes', '--property=ProtectSystem=strict', '--property=ProtectHome=yes', '--property=PrivateTmp=yes',
                               '--property=MemoryMax=3G', '--property=CPUQuota=50%', '--property=RuntimeMaxSec=240',
                               '--property=ReadWritePaths=' + str(stage), '--property=WorkingDirectory=' + str(stage),
                               '/usr/bin/python3', str(runner), str(stage)], timeout=270)

@@ -60,7 +60,11 @@ def main(directory):
                 try:
                     result = command('list', password)
                     if 'players online' in result:
-                        command('stop', password)
+                        try:
+                            command('stop', password)
+                        except (OSError, ValueError):
+                            # Shutdown can close RCON before its response arrives.
+                            pass
                         process.wait(timeout=30)
                         if process.returncode != 0:
                             raise RuntimeError('The recovered game did not stop cleanly.')
