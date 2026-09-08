@@ -35,3 +35,4 @@
   text-decoration: none;
 }
 #oak-map-recovery a:focus-visible { outline: 2px solid oklch(93% .014 95); outline-offset: 4px; }
+#oak-map-recovery a + a { margin-left: 8px; background: transparent; color: inherit; border: 1px solid oklch(34% .015 140); }

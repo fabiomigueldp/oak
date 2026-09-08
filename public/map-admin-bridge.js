@@ -61,11 +61,11 @@
   function update() {
     const app = window.bluemap,
       api = window.BlueMap;
-    if (!app?.mapViewer?.map || !api?.HtmlMarker || !api?.MarkerSet) return;
-    if (!set) {
-      set = new api.MarkerSet("oak-private-players");
-      set.data.toggleable = false;
-      app.mapViewer.markers.add(set);
+    if (!app?.mapViewer?.map || !api?.HtmlMarker) return;
+    if (set !== app.mapViewer.markers) {
+      for (const marker of markers.values()) set?.remove(marker);
+      markers.clear();
+      set = app.mapViewer.markers;
     }
     const live = Date.now() - received < 15000 ? players : [];
     const present = new Set();
@@ -80,6 +80,12 @@
         continue;
       present.add(p.name);
       let marker = markers.get(p.name);
+      // NormalMarkerManager replaces root marker sets every ten seconds.
+      // Private leaf markers stay outside that file-managed collection.
+      if (marker && marker.parent !== set) {
+        markers.delete(p.name);
+        marker = null;
+      }
       if (!marker) {
         marker = new api.HtmlMarker(
           "oak-private-" + markers.size + "-" + Date.now(),
@@ -105,7 +111,6 @@
     for (const [name, marker] of markers)
       if (!present.has(name)) {
         set.remove(marker);
-        marker.dispose();
         markers.delete(name);
       }
     const target = live.find((p) => p.name === follow);
@@ -128,7 +133,7 @@
   const timer = setInterval(update, 1000);
   addEventListener("pagehide", () => {
     clearInterval(timer);
-    set?.clear();
+    for (const marker of markers.values()) set?.remove(marker);
     markers.clear();
   });
 })();

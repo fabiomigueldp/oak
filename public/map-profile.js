@@ -68,23 +68,32 @@
 
   // Do not reload automatically: a GPU failure must not become a reload loop.
   let notice;
-  document.addEventListener('webglcontextlost', () => {
+  const mainCanvas = () => window.bluemap?.mapViewer?.renderer?.domElement;
+  document.addEventListener('webglcontextlost', (event) => {
+    // BlueMap also creates disposable preview canvases. Their teardown is not
+    // a failure of the live map renderer.
+    if (!mainCanvas() || event.target !== mainCanvas() || !event.target.isConnected) return;
     profile.contextLosses++;
     if (notice) return;
     notice = document.createElement('div');
     notice.id = 'oak-map-recovery';
     notice.setAttribute('role', 'alert');
     const text = document.createElement('p');
-    text.textContent = 'O mapa perdeu a conexão com o recurso gráfico do aparelho.';
+    text.textContent = 'O navegador interrompeu a renderização 3D do mapa.';
     const retry = document.createElement('a');
     const url = new URL(location.href);
-    url.searchParams.set('oak-quality', 'low');
+    url.searchParams.delete('oak-quality');
     retry.href = url.href;
-    retry.textContent = 'Reabrir em modo leve';
-    notice.append(text, retry);
+    retry.textContent = 'Reabrir mapa';
+    const lightRetry = document.createElement('a');
+    url.searchParams.set('oak-quality', 'low');
+    lightRetry.href = url.href;
+    lightRetry.textContent = 'Usar modo leve';
+    notice.append(text, retry, lightRetry);
     document.body.append(notice);
   }, true);
-  document.addEventListener('webglcontextrestored', () => {
+  document.addEventListener('webglcontextrestored', (event) => {
+    if (event.target !== mainCanvas()) return;
     notice?.remove();
     notice = undefined;
   }, true);

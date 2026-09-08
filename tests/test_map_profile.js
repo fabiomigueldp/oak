@@ -116,11 +116,16 @@ test('Request inputs retain cancellation and stale entity headers are removed', 
 
 test('GPU recovery is manual, keeps map coordinates, and reduces the next startup budget', async () => {
   const app = boot({href: 'https://oak.test/map/#overworld:0:110:0:430:0:0.6:0:0:perspective'});
-  app.listeners.webglcontextlost();
-  app.listeners.webglcontextlost();
+  const canvas = {isConnected: true};
+  app.context.bluemap = {mapViewer: {renderer: {domElement: canvas}}};
+  app.listeners.webglcontextlost({target: {isConnected: true}});
+  assert.equal(app.children.length, 0, 'Preview canvas teardown must not report GPU failure');
+  app.listeners.webglcontextlost({target: canvas});
+  app.listeners.webglcontextlost({target: canvas});
   assert.equal(app.children.length, 1);
   assert.equal(app.context.oakMapProfile.contextLosses, 2);
-  const href = app.children[0].children[1].href;
+  assert.ok(!app.children[0].children[1].href.includes('oak-quality=low'));
+  const href = app.children[0].children[2].href;
   assert.ok(href.includes('oak-quality=low'));
   assert.ok(href.includes('#overworld:'));
   assert.equal((await boot({href}).settings()).hiresSliderDefault, 50);
@@ -128,6 +133,8 @@ test('GPU recovery is manual, keeps map coordinates, and reduces the next startu
   await returning.settings();
   assert.equal(returning.store.get('bluemap-hiresViewDistance'), '50');
   assert.equal(returning.store.get('bluemap-lowresViewDistance'), '1000');
-  app.listeners.webglcontextrestored();
+  app.listeners.webglcontextrestored({target: {}});
+  assert.equal(app.children[0].removed, undefined);
+  app.listeners.webglcontextrestored({target: canvas});
   assert.equal(app.children[0].removed, true);
 });

@@ -12,6 +12,49 @@ test("ordinary public map does not activate the private overlay", () => {
   window.parent = window;
   vm.runInNewContext(code, { window });
 });
+
+test("private players survive BlueMap file refreshes and expire when updates stop", () => {
+  const handlers = {};
+  let tick, now = 100000;
+  class MarkerSet {
+    constructor(id) { this.data = {id}; this.children = []; this.isMarkerSet = true; }
+    add(marker) { this.children.push(marker); marker.parent = this; }
+    remove(marker) { this.children = this.children.filter(m => m !== marker); marker.parent = null; marker.dispose(); }
+    dispose() { for (const m of this.children) m.dispose(); }
+    refreshFile() { for (const m of [...this.children]) if (m.isMarkerSet) this.remove(m); }
+  }
+  class HtmlMarker {
+    constructor(id) {
+      this.data = {id}; this.disposals = 0;
+      this.element = {replaceChildren() {}};
+      this.anchor = {set() {}}; this.position = {set() {}};
+    }
+    dispose() { this.disposals++; }
+  }
+  const root = new MarkerSet('bm-root');
+  const parent = {location: {origin: 'https://oak.test', pathname: '/admin/'}};
+  const window = {parent, BlueMap: {MarkerSet, HtmlMarker}, bluemap: {
+    maps: [{data: {id: 'overworld'}}], mapViewer: {map: {data: {id: 'overworld'}}, markers: root}
+  }};
+  vm.runInNewContext(code, {window, parent, location: parent.location,
+    Date: {now: () => now}, document: {createElement: () => ({addEventListener() {}})},
+    addEventListener: (name, fn) => handlers[name] = fn,
+    setInterval: fn => { tick = fn; return 1; }, clearInterval() {}
+  });
+  const update = () => handlers.message({origin: parent.location.origin, source: parent,
+    data: {type: 'oak-admin-players', players: [{name: 'Player', position: [0,64,0], dimension: 'minecraft:overworld', sampled_at: now / 1000}]}});
+  update();
+  const marker = root.children[0];
+  for (let cycle = 0; cycle < 3; cycle++) {
+    now += 10000; update(); root.refreshFile(); tick();
+    assert.equal(root.children.length, 1);
+    assert.equal(root.children[0], marker);
+    assert.equal(marker.disposals, 0);
+  }
+  now += 16000; tick();
+  assert.equal(root.children.length, 0);
+  assert.equal(marker.disposals, 1);
+});
 test("an unrelated embedding page cannot activate the overlay", () => {
   const parent = {
     location: { origin: "https://oak.test", pathname: "/public/" },
