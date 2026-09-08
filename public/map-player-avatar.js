@@ -139,6 +139,10 @@
       }
       // Normalize classic 64x32 skins without network requests or another WebGL context.
       texture(this.T, url).promise.then(value => {
+        if (!value && appearance.skin && !this.disposed && this.appearance?.skin === appearance.skin) {
+          this.build({...appearance, skin: ''});
+          return;
+        }
         if (!value || this.disposed || value.image.height !== value.image.width/2) return;
         const old = value.image, canvas = document.createElement('canvas');
         canvas.width = old.width; canvas.height = old.width;
