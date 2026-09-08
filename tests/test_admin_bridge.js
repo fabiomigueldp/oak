@@ -37,7 +37,10 @@ test("private players survive BlueMap file refreshes and expire when updates sto
     maps: [{data: {id: 'overworld'}}], mapViewer: {map: {data: {id: 'overworld'}}, markers: root}
   }};
   vm.runInNewContext(code, {window, parent, location: parent.location,
-    Date: {now: () => now}, document: {createElement: () => ({addEventListener() {}})},
+    Date: {now: () => now}, document: {
+      createElement: () => ({classList: {add() {}}, dataset: {}, setAttribute() {}, replaceChildren() {}, addEventListener() {}}),
+      createElementNS: () => ({setAttribute() {}, append() {}})
+    },
     addEventListener: (name, fn) => handlers[name] = fn,
     setInterval: fn => { tick = fn; return 1; }, clearInterval() {}
   });

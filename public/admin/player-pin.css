@@ -1,0 +1,42 @@
+/* The chevron tip is the bottom-center map anchor; hover never moves it. */
+.oak-player-pin {
+  --pin-tone: oklch(84% .11 155);
+  position: relative; display: block; box-sizing: border-box;
+  width: 44px; height: 44px; min-height: 44px; padding: 0;
+  border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  color: oklch(97% .01 130);
+  font: 550 11px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent;
+}
+.oak-player-pin[data-tone="1"] { --pin-tone: oklch(85% .12 90); }
+.oak-player-pin[data-tone="2"] { --pin-tone: oklch(82% .09 225); }
+.oak-player-pin[data-tone="3"] { --pin-tone: oklch(82% .1 315); }
+.oak-player-pin[data-tone="4"] { --pin-tone: oklch(84% .1 45); }
+.oak-player-pin[data-tone="5"] { --pin-tone: oklch(85% .1 185); }
+.oak-player-pin svg {
+  position: absolute; width: 40px; height: 30px; left: 2px; bottom: 0;
+  overflow: visible; fill: none; stroke-linecap: round; stroke-linejoin: round;
+  filter: drop-shadow(0 2px 3px oklch(12% .02 150 / .45));
+  transition: filter 160ms ease-out; pointer-events: none;
+}
+.oak-chevron-edge { stroke: oklch(18% .02 150); stroke-width: 8px; }
+.oak-chevron-halo { stroke: oklch(98% .008 120); stroke-width: 5px; }
+.oak-chevron-color { stroke: var(--pin-tone); stroke-width: 3px; }
+.oak-player-name {
+  position: absolute; left: 50%; bottom: 33px; transform: translateX(-50%);
+  white-space: nowrap; padding: 2px 5px; border-radius: 4px;
+  text-shadow: 0 1px 2px oklch(12% .02 150), 1px 0 2px oklch(12% .02 150), -1px 0 2px oklch(12% .02 150);
+  background: oklch(18% .02 150 / .68);
+  transition: background-color 160ms ease-out, color 160ms ease-out;
+}
+.oak-player-pin:hover, .oak-player-pin:focus-visible { background: transparent; outline: none; z-index: 2; }
+.oak-player-pin:hover svg, .oak-player-pin:focus-visible svg { filter: drop-shadow(0 0 4px var(--pin-tone)); }
+.oak-player-pin:hover .oak-player-name, .oak-player-pin:focus-visible .oak-player-name { color: var(--pin-tone); background: oklch(18% .02 150 / .96); }
+.oak-player-pin:focus-visible .oak-player-name { outline: 2px solid var(--pin-tone); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .oak-player-pin svg, .oak-player-name { transition: none; } }
+@media (forced-colors: active) {
+  .oak-chevron-edge { stroke: CanvasText; }
+  .oak-chevron-halo { stroke: Canvas; }
+  .oak-chevron-color { stroke: Highlight; }
+  .oak-player-name { color: CanvasText; background: Canvas; text-shadow: none; }
+}

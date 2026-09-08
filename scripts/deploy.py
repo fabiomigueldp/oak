@@ -25,7 +25,7 @@ TARGETS = {
     'deploy/systemd/oak-chat.service': Path('/etc/systemd/system/oak-chat.service'),
     'deploy/systemd/oak-web-collector.service': Path('/etc/systemd/system/oak-web-collector.service'),
 }
-for asset in ('index.html', 'style.css', 'app.js', 'model.js', 'oak.svg', 'world-cover.png', 'demo-map.html', 'demo-map.js', 'demo-map.css'):
+for asset in ('index.html', 'style.css', 'app.js', 'model.js', 'oak.svg', 'world-cover.png', 'demo-map.html', 'demo-map.js', 'demo-map.css', 'player-pin.css'):
     TARGETS['public/admin/' + asset] = Path('/srv/oak/web/admin') / asset
 
 def run(*args):

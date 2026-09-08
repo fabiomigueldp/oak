@@ -1,6 +1,27 @@
 /* Original code-drawn terrain for localhost demonstration, never live map data. */
 (() => {
   "use strict";
+  function decoratePlayerPin(button, name) {
+    button.classList.add("oak-player-pin");
+    button.setAttribute("aria-label", name);
+    let hash = 0;
+    for (const char of name.toLowerCase()) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+    button.dataset.tone = String(hash % 6);
+    const label = document.createElement("span");
+    label.className = "oak-player-name";
+    label.textContent = name;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 40 30");
+    svg.setAttribute("aria-hidden", "true");
+    for (const layer of ["edge", "halo", "color"]) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", "M8 10 20 26 32 10");
+      path.setAttribute("class", "oak-chevron-" + layer);
+      svg.append(path);
+    }
+    button.replaceChildren(label, svg);
+  }
+
   const canvas = document.querySelector("#terrain"),
     ctx = canvas.getContext("2d");
   let width = 0,
@@ -109,7 +130,7 @@
       );
       const b = document.createElement("button");
       b.className = "pin";
-      b.textContent = p.name;
+      decoratePlayerPin(b, p.name);
       b.style.left = x + "px";
       b.style.top = y + "px";
       b.addEventListener("click", () =>

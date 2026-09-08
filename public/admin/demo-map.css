@@ -78,24 +78,7 @@ canvas:focus-visible {
   color: #a9bba6;
   pointer-events: none;
 }
-.pin {
-  position: absolute;
-  transform: translate(-50%, -100%);
-  padding: 7px 12px;
-  border-color: #c4d493;
-  box-shadow: 0 6px 16px #0e191755;
-  white-space: nowrap;
-  min-height: 34px;
-}
-.pin::before {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #c4d493;
-  margin-right: 6px;
-}
+.pin.oak-player-pin { position: absolute; transform: translate(-50%, -100%); }
 @media (max-width: 430px) {
   .hint {
     max-width: 160px;
