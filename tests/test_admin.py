@@ -34,6 +34,21 @@ from admin.runtime import Runtime
 from admin.settings import Settings
 from admin.store import Conflict, Store, digest
 from admin.agent import AgentClient, AgentServer
+from admin.drill import verify_network_isolation
+
+
+class DrillTests(unittest.TestCase):
+    def test_isolation_check_uses_only_own_namespace_after_privilege_drop(self):
+        def readlink(path):
+            if str(path).replace('\\', '/') != '/proc/self/ns/net':
+                raise PermissionError('Other process namespaces are private.')
+            return Path('net:[200]')
+        with patch.object(Path, 'readlink', readlink):
+            verify_network_isolation('net:[100]')
+            with self.assertRaises(RuntimeError):
+                verify_network_isolation('net:[200]')
+            with self.assertRaises(ValueError):
+                verify_network_isolation('')
 
 
 class VirtualPasskey:

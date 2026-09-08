@@ -465,12 +465,26 @@ class Runtime:
                     os.chown(item, identity.pw_uid, identity.pw_gid, follow_symlinks=False)
                 progress('Testando inicialização isolada', 'Starting the restored game in a private network namespace with CPU, memory and time limits.')
                 runner = Path(__file__).with_name('drill.py').resolve()
-                output = run(['systemd-run', '--quiet', '--wait', '--pipe', '--collect', '--unit=oak-drill-' + job,
+                arguments = ['systemd-run', '--quiet', '--wait', '--pipe', '--collect', '--unit=oak-drill-' + job,
                               '--property=User=oak', '--property=Group=oak', '--property=PrivateNetwork=yes',
                               '--property=NoNewPrivileges=yes', '--property=ProtectSystem=strict', '--property=ProtectHome=yes', '--property=PrivateTmp=yes',
                               '--property=MemoryMax=3G', '--property=CPUQuota=50%', '--property=RuntimeMaxSec=240',
                               '--property=ReadWritePaths=' + str(stage), '--property=WorkingDirectory=' + str(stage),
-                              '/usr/bin/python3', str(runner), str(stage)], timeout=270)
+                              '/usr/bin/python3', str(runner), str(stage), str(Path('/proc/1/ns/net').readlink())]
+                try:
+                    output = subprocess.run(arguments, capture_output=True, text=True, check=True, timeout=270).stdout
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+                    diagnostic = error.stderr or ''
+                    if isinstance(diagnostic, bytes):
+                        diagnostic = diagnostic.decode(errors='replace')
+                    log = stage / 'drill-output.log'
+                    if log.is_file():
+                        with log.open('rb') as file:
+                            file.seek(max(0, log.stat().st_size - 65536))
+                            diagnostic = diagnostic[-16384:] + '\n' + file.read(65536).decode(errors='replace')
+                    # Runtime output stays root-only and is never returned through the API.
+                    atomic(self.control / 'drill-reports' / (job + '.log'), diagnostic[-81920:])
+                    raise RuntimeError('Isolated boot failed. A private diagnostic report was retained for the operator.') from None
                 boot_result = json.loads(output.strip().splitlines()[-1])
                 if not boot_result.get('boot_verified'):
                     raise RuntimeError('The isolated game did not confirm successful recovery.')

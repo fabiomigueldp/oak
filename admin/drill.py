@@ -1,6 +1,7 @@
 """Run ONLY inside the systemd private-network restore drill sandbox."""
 import json
 from pathlib import Path
+import re
 import secrets
 import socket
 import struct
@@ -36,13 +37,21 @@ def command(text, password):
         return packet(sock, 2, 2, text)
 
 
-def main(directory):
+def verify_network_isolation(host_namespace):
+    # PID 1's namespace cannot be inspected after dropping to the game identity.
+    # The privileged launcher records it before systemd creates the sandbox.
+    if not re.fullmatch(r'net:\[\d+\]', host_namespace):
+        raise ValueError('Expected the host network namespace identity.')
+    if str(Path('/proc/self/ns/net').readlink()) == host_namespace:
+        raise RuntimeError('A private network namespace is required.')
+
+
+def main(directory, host_namespace):
     root = Path(directory).resolve()
     if root.parent.name != 'drills' or not (root / 'world/level.dat').is_file():
         raise ValueError('Expected a separate restored drill directory.')
     # Fail closed when accidentally called outside the private network namespace.
-    if Path('/proc/self/ns/net').readlink() == Path('/proc/1/ns/net').readlink():
-        raise RuntimeError('A private network namespace is required.')
+    verify_network_isolation(host_namespace)
     config_path = root / 'server.properties'
     config = dict(line.split('=', 1) for line in config_path.read_text().splitlines() if '=' in line and not line.startswith('#'))
     password = secrets.token_urlsafe(32)
@@ -85,4 +94,4 @@ def main(directory):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1])
+    main(sys.argv[1], sys.argv[2])

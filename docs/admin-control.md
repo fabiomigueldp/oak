@@ -166,6 +166,12 @@ mods execute under the existing game identity with a read-only system and writab
 isolated copy. This supports owner-controlled backups, not hostile uploads;
 there is no archive upload route. There is no off-Oracle copy.
 
+Failed boot diagnostics are retained under `control/drill-reports/<job>.log`,
+with root-only permissions and a bounded log tail. They may contain private
+runtime data; inspect them through SSH and never publish or commit them. The
+launcher records the host network namespace before dropping privileges, and the
+drill checks its own namespace against that identity before starting Java.
+
 ## Restoration and interrupted recovery
 
 Restoration requires the owner, recent authentication, a matching fingerprint,
