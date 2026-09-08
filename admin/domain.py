@@ -4,7 +4,7 @@ import re
 
 ROLES = {'owner': 3, 'administrator': 2, 'moderator': 1, 'observer': 0}
 OPERATIONS = {
-    'environment_apply': {'label': 'Ajustar ambiente', 'role': 2, 'review': True, 'recent_auth': False, 'schedule': False},
+    'environment_apply': {'label': 'Ajustar ambiente', 'role': 2, 'review': True, 'schedule': False},
     'save': {'label': 'Salvar mundo', 'role': 2, 'review': False, 'schedule': True},
     'backup': {'label': 'Criar backup', 'role': 2, 'review': False, 'schedule': True},
     'verify_backup': {'label': 'Verificar backup', 'role': 2, 'review': False, 'schedule': False},

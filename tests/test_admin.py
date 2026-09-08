@@ -131,7 +131,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.post('/reviews', {'kind': 'console', 'params': {'command': 'list'}}).status_code, 403)
         self.assertEqual(self.client.get(API + '/jobs/' + first.json()['id']).status_code, 404)
 
-    def test_environment_review_does_not_require_ten_minute_reauthentication(self):
+    def test_valid_sessions_do_not_require_ten_minute_reauthentication(self):
         uid = self.login_demo()
         with self.store.transaction() as db:
             db.execute('UPDATE sessions SET verified=?', (time.time() - 3600,))
@@ -142,7 +142,11 @@ class ApiTests(unittest.TestCase):
         headers = {'Idempotency-Key': 'environment-aged-session-123'}
         self.assertEqual(self.post('/jobs', reviewed, headers={**headers, 'X-Oak-CSRF': ''}).status_code, 403)
         self.assertEqual(self.post('/jobs', reviewed, headers=headers).status_code, 202)
-        self.assertEqual(self.post('/reviews', {'kind': 'console', 'params': {'command': 'list'}}).status_code, 403)
+        console = {'kind': 'console', 'params': {'command': 'list'}}
+        console_review = self.post('/reviews', console)
+        self.assertEqual(console_review.status_code, 200)
+        self.assertEqual(self.post('/jobs', {**console, 'review': console_review.json()['id']}, headers={'Idempotency-Key': 'console-aged-session-123'}).status_code, 202)
+        self.assertEqual(self.post('/auth/enroll/options').status_code, 200)
         with self.store.transaction() as db:
             db.execute("UPDATE users SET role='observer' WHERE id=?", (uid,))
         self.assertEqual(self.post('/reviews', payload).status_code, 403)

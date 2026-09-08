@@ -74,8 +74,8 @@ process. Root receipts are private. Console results are owner-only.
 
 Passkeys require user verification, resident credentials, exact RP/origin checks
 and one-use challenges. Sessions are HttpOnly/Secure/SameSite Strict, last 12 hours,
-and use CSRF tokens for mutations. Sensitive actions require authentication within
-10 minutes; sign out and back in when fresh authentication is required. There is
+and use CSRF tokens for mutations. A valid session authorizes operations according
+to its account role without an additional authentication-age gate. There is
 no default password or public self-registration.
 
 Reviews bind actor, operation and exact parameters for five minutes. Jobs have
@@ -174,7 +174,7 @@ drill checks its own namespace against that identity before starting Java.
 
 ## Restoration and interrupted recovery
 
-Restoration requires the owner, recent authentication, a matching fingerprint,
+Restoration requires an authenticated owner, a matching fingerprint,
 one-use review and typed confirmation. The agent verifies the archive, makes a
 fresh safety checkpoint, extracts separately, pauses active backup/map timers
 and rendering, stops Minecraft, replaces the approved inventory and checks RCON

@@ -102,8 +102,6 @@ def create_app(settings=None, agent=None, *, background=True):
 
     @app.exception_handler(PermissionError)
     async def denied(request, exc):
-        if 'Sign in again' in str(exc):
-            return JSONResponse({'error': 'Por segurança, saia e entre novamente antes de confirmar esta ação.'}, status_code=403)
         return JSONResponse({'error': 'Esta ação não está disponível para sua sessão.', 'detail': str(exc)}, status_code=403)
 
     @app.exception_handler(RuntimeError)
@@ -114,7 +112,7 @@ def create_app(settings=None, agent=None, *, background=True):
     async def disconnected(request, exc):
         return JSONResponse({'error': 'O agente está indisponível. Confira o serviço e tente novamente.'}, status_code=503)
 
-    def current(request, level=0, *, recent=False):
+    def current(request, level=0):
         session = store.current_session(request.cookies.get(settings.cookie))
         if not session:
             raise HTTPException(401, 'Entre para continuar.')
@@ -122,8 +120,6 @@ def create_app(settings=None, agent=None, *, background=True):
             raise PermissionError('Insufficient account permissions.')
         if request.method not in ('GET', 'HEAD') and not hmac.compare_digest(request.headers.get('x-oak-csrf', ''), session['csrf']):
             raise PermissionError('Invalid CSRF token.')
-        if recent and time.time() - session['verified'] > 600:
-            raise PermissionError('Sign in again before this sensitive action.')
         return session
 
     async def body(request):
@@ -180,7 +176,7 @@ def create_app(settings=None, agent=None, *, background=True):
         data = await body(request)
         if data.get('token'):
             return auth.register_options(token=clean_text(data['token'], 100, 20))
-        user = current(request, recent=True)
+        user = current(request)
         return auth.register_options(user=user)
 
     @app.post(API + '/auth/enroll/verify')
@@ -326,8 +322,6 @@ def create_app(settings=None, agent=None, *, background=True):
         data = await body(request)
         kind = data.get('kind')
         params = validate(kind, data.get('params', {}), user['role'])
-        if OPERATIONS[kind].get('recent_auth', True):
-            current(request, recent=True)
         preview = await asyncio.to_thread(agent.call, 'preview', {'kind': kind, 'params': params})
         identifier = secrets.token_urlsafe(24)
         with store.transaction() as db:
@@ -346,8 +340,6 @@ def create_app(settings=None, agent=None, *, background=True):
             raise ValueError('A unique idempotency key is required.')
         if OPERATIONS[kind]['review'] and not data.get('review'):
             raise ValueError('Review this action before running it.')
-        if OPERATIONS[kind]['review'] and OPERATIONS[kind].get('recent_auth', True):
-            current(request, recent=True)
         return store.create_job(user['user_id'], kind, OPERATIONS[kind]['label'], params, key, data.get('review'))
 
     @app.post(API + '/jobs/{jid}/cancel')
@@ -475,7 +467,7 @@ def create_app(settings=None, agent=None, *, background=True):
 
     @app.post(API + '/access/invite')
     async def invite(request: Request):
-        current(request, 3, recent=True)
+        current(request, 3)
         data = await body(request)
         role = data.get('role', 'observer')
         if role not in ROLES:
@@ -486,7 +478,7 @@ def create_app(settings=None, agent=None, *, background=True):
 
     @app.patch(API + '/access/users/{uid}')
     async def update_user(request: Request, uid: str):
-        actor = current(request, 3, recent=True)
+        actor = current(request, 3)
         if uid == actor['user_id']:
             raise ValueError('Use a second owner to change your own access.')
         data = await body(request)
@@ -504,7 +496,7 @@ def create_app(settings=None, agent=None, *, background=True):
 
     @app.delete(API + '/access/credentials/{cid}')
     def delete_credential(request: Request, cid: str):
-        user = current(request, recent=True)
+        user = current(request)
         with store.transaction() as db:
             if db.execute('SELECT count(*) FROM credentials WHERE user_id=?', (user['user_id'],)).fetchone()[0] <= 1:
                 raise ValueError('Keep at least one passkey on your account.')

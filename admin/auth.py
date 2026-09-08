@@ -32,8 +32,6 @@ class Auth:
                 raise PermissionError('Enrollment link expired or already used.')
             uid, name = invite['user_id'], invite['name']
         else:
-            if time.time() - user['verified'] > 600:
-                raise PermissionError('Sign in again before adding a passkey.')
             uid, name = user['user_id'], user['name']
         excluded = [PublicKeyCredentialDescriptor(id=unb64(row['id'])) for row in self.store.rows('SELECT id FROM credentials WHERE user_id=?', (uid,))]
         options = generate_registration_options(rp_id=self.settings.rp_id, rp_name='Oak', user_id=uuid.UUID(uid).bytes, user_name=name,
