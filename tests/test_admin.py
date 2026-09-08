@@ -131,6 +131,22 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.post('/reviews', {'kind': 'console', 'params': {'command': 'list'}}).status_code, 403)
         self.assertEqual(self.client.get(API + '/jobs/' + first.json()['id']).status_code, 404)
 
+    def test_environment_review_does_not_require_ten_minute_reauthentication(self):
+        uid = self.login_demo()
+        with self.store.transaction() as db:
+            db.execute('UPDATE sessions SET verified=?', (time.time() - 3600,))
+        payload = {'kind': 'environment_apply', 'params': {'action': 'override', 'revision': 0, 'weather': 'clear', 'minutes': 5}}
+        review = self.post('/reviews', payload)
+        self.assertEqual(review.status_code, 200, review.text)
+        reviewed = {**payload, 'review': review.json()['id']}
+        headers = {'Idempotency-Key': 'environment-aged-session-123'}
+        self.assertEqual(self.post('/jobs', reviewed, headers={**headers, 'X-Oak-CSRF': ''}).status_code, 403)
+        self.assertEqual(self.post('/jobs', reviewed, headers=headers).status_code, 202)
+        self.assertEqual(self.post('/reviews', {'kind': 'console', 'params': {'command': 'list'}}).status_code, 403)
+        with self.store.transaction() as db:
+            db.execute("UPDATE users SET role='observer' WHERE id=?", (uid,))
+        self.assertEqual(self.post('/reviews', payload).status_code, 403)
+
     def test_real_passkey_enrollment_and_login_replay_protection(self):
         invite = self.store.invite('Owner')
         authenticator = VirtualPasskey()

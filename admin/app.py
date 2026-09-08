@@ -322,10 +322,12 @@ def create_app(settings=None, agent=None, *, background=True):
 
     @app.post(API + '/reviews')
     async def review(request: Request):
-        user = current(request, recent=True)
+        user = current(request)
         data = await body(request)
         kind = data.get('kind')
         params = validate(kind, data.get('params', {}), user['role'])
+        if OPERATIONS[kind].get('recent_auth', True):
+            current(request, recent=True)
         preview = await asyncio.to_thread(agent.call, 'preview', {'kind': kind, 'params': params})
         identifier = secrets.token_urlsafe(24)
         with store.transaction() as db:
@@ -344,7 +346,7 @@ def create_app(settings=None, agent=None, *, background=True):
             raise ValueError('A unique idempotency key is required.')
         if OPERATIONS[kind]['review'] and not data.get('review'):
             raise ValueError('Review this action before running it.')
-        if OPERATIONS[kind]['review']:
+        if OPERATIONS[kind]['review'] and OPERATIONS[kind].get('recent_auth', True):
             current(request, recent=True)
         return store.create_job(user['user_id'], kind, OPERATIONS[kind]['label'], params, key, data.get('review'))
 
