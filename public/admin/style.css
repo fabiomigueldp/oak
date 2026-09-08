@@ -175,12 +175,17 @@
     position: sticky;
     top: 0;
     height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
     padding: 28px 16px 12px;
     background: var(--panel);
     border-right: 1px solid var(--soft-line);
     z-index: 20;
+  }
+  .sidebar > * {
+    flex-shrink: 0;
   }
   .brand {
     display: flex;
