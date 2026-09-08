@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-for folder in ('server', 'scripts', 'tests', 'map'):
+for folder in ('server', 'scripts', 'tests', 'map', 'admin'):
     for path in (ROOT / folder).glob('*.py'):
         ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
 subprocess.run([sys.executable, str(ROOT / 'tests/test_chat.py')], check=True)

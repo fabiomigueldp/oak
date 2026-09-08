@@ -1,5 +1,11 @@
 # Production deployment
 
+The private administrative service has a separate explicit installation and
+recovery procedure: [Oak Control operations](../docs/admin-control.md). Website
+deployment includes its static interface and fixed API proxy, but does not install
+the privileged agent or restart Minecraft. Activate the agent only from a reviewed
+clean commit using that procedure.
+
 ## Host and paths
 
 - SSH alias: `oracle`; public website: `https://oak.fabiomigueldp.me`.

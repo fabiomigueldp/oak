@@ -15,4 +15,5 @@ backups/
 map-test/
 deployments/
 *.log
+*.sqlite3*
 .DS_Store

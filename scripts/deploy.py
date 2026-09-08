@@ -17,17 +17,22 @@ TARGETS = {
     'public/app.js': Path('/srv/oak/web/app.js'),
     'public/map-profile.js': Path('/srv/oak/web/map-profile.js'),
     'public/map-profile.css': Path('/srv/oak/web/map-profile.css'),
+    'public/map-admin-bridge.js': Path('/srv/oak/web/map-admin-bridge.js'),
+    'public/map-admin-bridge.css': Path('/srv/oak/web/map-admin-bridge.css'),
     'server/chat-server.py': Path('/srv/oak/chat-server.py'),
     'server/collect.py': Path('/srv/oak/collect.py'),
     'deploy/nginx.conf': Path('/srv/oak/nginx.conf'),
     'deploy/systemd/oak-chat.service': Path('/etc/systemd/system/oak-chat.service'),
     'deploy/systemd/oak-web-collector.service': Path('/etc/systemd/system/oak-web-collector.service'),
 }
+for asset in ('index.html', 'style.css', 'app.js', 'model.js', 'oak.svg', 'world-cover.png', 'demo-map.html', 'demo-map.js', 'demo-map.css'):
+    TARGETS['public/admin/' + asset] = Path('/srv/oak/web/admin') / asset
 
 def run(*args):
     subprocess.run(args, check=True, timeout=120)
 
 def install_file(path, content, mode, uid, gid):
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
     if path == Path('/srv/oak/nginx.conf'):
         # Docker binds this file's inode; replacing it would leave a stale mount.
         path.write_bytes(content)
@@ -51,7 +56,7 @@ def activate(changed):
         run('docker', 'exec', 'oak-web', 'nginx', '-t')
         run('docker', 'exec', 'oak-web', 'nginx', '-s', 'reload')
 
-def health(map_assets=None):
+def health(map_assets=None, admin_assets=None):
     for attempt in range(5):
         try:
             run('systemctl', 'is-active', '--quiet', 'oak-chat', 'oak-web-collector')
@@ -69,6 +74,14 @@ def health(map_assets=None):
                 with urllib.request.urlopen('https://oak.fabiomigueldp.me/' + asset + '?v=1', timeout=10) as response:
                     if response.read() != expected:
                         raise RuntimeError('Unexpected map profile asset: ' + asset)
+            if admin_assets:
+                with urllib.request.urlopen('https://oak.fabiomigueldp.me/admin/', timeout=10) as response:
+                    if b'/admin/assets/app.js' not in response.read() or "frame-ancestors 'none'" not in response.headers.get('Content-Security-Policy', ''):
+                        raise RuntimeError('Administrative entry point or security policy is missing.')
+                for asset, expected in admin_assets.items():
+                    with urllib.request.urlopen('https://oak.fabiomigueldp.me/admin/assets/' + asset, timeout=10) as response:
+                        if response.read() != expected:
+                            raise RuntimeError('Unexpected administrative asset: ' + asset)
             with urllib.request.urlopen('https://oak.fabiomigueldp.me/status.json', timeout=10) as response:
                 data = json.load(response)
                 if time.time() - data['updated'] > 30:
@@ -120,12 +133,14 @@ def main(sha):
     (backup / 'manifest.json').write_text(json.dumps({'previous': previous, 'files': manifest}, indent=2))
     try:
         # Assets precede HTML so newly referenced assets exist when HTML is served.
-        for name in sorted(changed, key=lambda value: value == 'public/index.html'):
+        for name in sorted(changed, key=lambda value: value.endswith('/index.html')):
             metadata = {key: manifest[name][key] for key in ('mode', 'uid', 'gid')}
             install_file(TARGETS[name], (REPO / name).read_bytes(), **metadata)
         activate(changed)
         health({Path(name).name: (REPO / name).read_bytes() for name in TARGETS
-                if name.startswith('public/map-profile.')})
+                if name.startswith('public/map-profile.')},
+               {Path(name).name: (REPO / name).read_bytes() for name in TARGETS
+                if name.startswith('public/admin/') and not name.endswith('/index.html')})
     except Exception:
         for name in changed:
             if manifest[name]['existed']:

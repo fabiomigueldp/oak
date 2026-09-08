@@ -1,10 +1,11 @@
-import collections,datetime,http.server,json,pathlib,re,socket,struct,threading,time
+import collections,datetime,http.client,http.server,json,pathlib,re,socket,struct,threading,time
 ROOT=pathlib.Path('/srv/oak')
 ORIGIN='https://oak.fabiomigueldp.me'
 condition=threading.Condition(); snapshot='{}'; revision=0
 web_messages=collections.deque(maxlen=60)
 rate_lock=threading.Lock();recent={};global_rate=collections.deque()
 streams=threading.BoundedSemaphore(32)
+admin_streams=threading.BoundedSemaphore(16)
 # Floodgate adds a dot prefix to Bedrock names; keep system/private logs excluded.
 GAME_CHAT=re.compile(r'^\[([\d:]+)\] \[Server thread/INFO\]: (?:\[Not Secure\] )?<([.]?[A-Za-z0-9_]{1,16})> (.*)$')
 def exact(s,n):
@@ -53,10 +54,40 @@ def monitor():
   except Exception as e:print(type(e).__name__,flush=True)
   time.sleep(1)
 class Handler(http.server.BaseHTTPRequestHandler):
+ def admin_proxy(self):
+  # Fixed loopback destination: no caller-controlled host or internal path rewrite.
+  if not self.path.startswith('/admin/api/'):return self.result(404,{'error':'Not found'})
+  if not admin_streams.acquire(False):return self.result(503,{'error':'Painel ocupado. Tente novamente.'})
+  connection=http.client.HTTPConnection('127.0.0.1',8092,timeout=150)
+  sent=False
+  try:
+   self.connection.settimeout(15)
+   if self.headers.get('Transfer-Encoding'):return self.result(400,{'error':'Unsupported transfer encoding'})
+   size=int(self.headers.get('Content-Length','0'))
+   if not 0<=size<=65536:return self.result(413,{'error':'Solicitação muito grande.'})
+   data=self.rfile.read(size) if size else None
+   headers={name:self.headers[name] for name in ('Origin','Content-Type','Cookie','X-Oak-CSRF','Idempotency-Key','Accept') if name in self.headers}
+   connection.request(self.command,self.path,body=data,headers=headers)
+   response=connection.getresponse()
+   self.send_response(response.status)
+   for name,value in response.getheaders():
+    if name.lower() not in ('connection','transfer-encoding','server','date','content-length'):self.send_header(name,value)
+   self.send_header('Connection','close');self.end_headers();sent=True;self.close_connection=True
+   while True:
+    chunk=response.read1(16384)
+    if not chunk:break
+    self.wfile.write(chunk);self.wfile.flush()
+  except (OSError,ValueError,http.client.HTTPException):
+   if not sent:self.result(503,{'error':'O painel está indisponível no momento.'})
+  finally:
+   connection.close();admin_streams.release()
+ def do_PATCH(self):return self.admin_proxy()
+ def do_DELETE(self):return self.admin_proxy()
  def log_message(self,*args):pass
  def result(self,status,data):
   body=json.dumps(data,ensure_ascii=False).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
  def do_GET(self):
+  if self.path.startswith('/admin/api/'):return self.admin_proxy()
   if self.path!='/api/events':return self.result(404,{'error':'Not found'})
   if not streams.acquire(False):return self.result(503,{'error':'Muitas conexões. Tente novamente.'})
   try:
@@ -71,6 +102,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
   except (OSError,TimeoutError):pass
   finally:streams.release()
  def do_POST(self):
+  if self.path.startswith('/admin/api/'):return self.admin_proxy()
   if self.path!='/api/chat':return self.result(404,{'error':'Not found'})
   if self.headers.get('Origin')!=ORIGIN or self.headers.get('Content-Type','').split(';')[0]!='application/json':return self.result(403,{'error':'Origem inválida.'})
   try:

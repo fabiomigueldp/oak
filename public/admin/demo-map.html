@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Atlas ilustrativo · Oak</title>
+    <link rel="stylesheet" href="./demo-map.css" />
+    <script defer src="./demo-map.js"></script>
+  </head>
+  <body>
+    <canvas
+      id="terrain"
+      aria-label="Terreno isométrico ilustrativo. Arraste para explorar; use os botões para aproximar."
+      tabindex="0"
+    ></canvas>
+    <div id="pins"></div>
+    <div class="map-caption">
+      <strong id="dimension">Superfície</strong
+      ><span>Atlas de demonstração · terreno ilustrativo</span>
+    </div>
+    <div class="map-controls">
+      <button id="zoom-in" aria-label="Aproximar">+</button
+      ><button id="zoom-out" aria-label="Afastar">−</button
+      ><button id="home" aria-label="Centralizar mapa">⌂</button>
+    </div>
+    <span class="hint">Arraste para explorar · + / − para aproximar</span>
+  </body>
+</html>

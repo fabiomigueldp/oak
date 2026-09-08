@@ -9,3 +9,12 @@ Use system-ui typography, subtle one-pixel borders, and visible keyboard focus. 
 The map and conversation share a two-column workspace on desktop and stack at 850px. Desktop height follows the viewport with a minimum for usable chat; mobile map sizing uses stable viewport units, with a direct conversation anchor. Controls have at least 44px touch targets and mobile form text is 16px to avoid focus zoom. Chat history scrolls independently and accepts keyboard focus. Enter submits unless an input method is composing text. The server accepts single-line messages.
 
 Keep recovery feedback compact, readable, and actionable without automatic page reloads or decorative animation. Untrusted player names and chat messages must use textContent.
+
+Oak Control uses the same forest tokens in `public/admin/style.css`, with a pale
+day theme for daytime administration. A quiet persistent sidebar locates seven
+workspaces, an immersive map anchors the overview, and a contextual drawer keeps
+details near their source. Native dialogs explain consequential changes before
+execution. The persistent operation bar shows work across navigation. Typography
+and generous spacing establish hierarchy; evidence labels distinguish current,
+stale, simulated and historically sampled data. Do not substitute illustrative
+metrics for unavailable live measurements.

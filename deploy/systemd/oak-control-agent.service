@@ -1,0 +1,32 @@
+[Unit]
+Description=Oak bounded host administration agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=oak-control
+WorkingDirectory=/opt/oak-control/current
+RuntimeDirectory=oak-control
+RuntimeDirectoryMode=0750
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m admin agent
+ExecStopPost=/usr/bin/python3 -m admin recover-saving
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=1200
+KillMode=mixed
+UMask=0077
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/oak/control /srv/oak/server /srv/oak/backups /srv/oak/map-test /srv/oak/web /run/oak-control
+RestrictAddressFamilies=AF_UNIX AF_INET
+MemoryMax=512M
+CPUQuota=60%
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target

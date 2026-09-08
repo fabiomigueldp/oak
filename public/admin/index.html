@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="night">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#17201b" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Oak · Seu mundo, sob seus cuidados</title>
+    <link rel="icon" type="image/svg+xml" href="/admin/assets/oak.svg" />
+    <link rel="stylesheet" href="/admin/assets/style.css?v=1" />
+    <script type="module" src="/admin/assets/app.js?v=1"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Ir para o conteúdo</a>
+    <div id="login" class="login-screen">
+      <div class="login-landscape">
+        <img
+          src="/admin/assets/world-cover.png"
+          alt="Construções de Oak entre árvores e montanhas"
+          decoding="async"
+        />
+        <div class="landscape-copy">
+          <span class="eyebrow">UM LUGAR PARA VOLTAR</span>
+          <p>Cada construção.<br />Cada história.<br />Seu mundo.</p>
+          <span class="photo-note">Registro do mundo de Oak</span>
+        </div>
+      </div>
+      <main class="login-panel">
+        <a href="/" class="brand"
+          ><img
+            src="/admin/assets/oak.svg"
+            alt=""
+            width="30"
+            height="30"
+          />oak<span>controle</span></a
+        >
+        <div class="login-content">
+          <span class="eyebrow">BEM-VINDO DE VOLTA</span>
+          <h1>Seu mundo,<br />em boas mãos.</h1>
+          <p class="lead">
+            Acompanhe o que acontece, preserve o progresso e cuide de cada
+            detalhe.
+          </p>
+          <button id="login-passkey" class="button primary" type="button">
+            <span data-icon="key"></span>Entrar com chave de acesso</button
+          ><button
+            id="login-enroll"
+            class="button primary"
+            type="button"
+            hidden
+          >
+            <span data-icon="key"></span>Registrar minha chave de acesso</button
+          ><button
+            id="login-demo"
+            class="button secondary"
+            type="button"
+            hidden
+          >
+            Explorar demonstração
+          </button>
+          <p class="login-status" id="login-status" role="status">
+            Conectando ao painel…
+          </p>
+          <details class="login-help">
+            <summary>Primeiro acesso ou recuperação</summary>
+            <p>
+              Use o convite privado emitido pelo proprietário. Quem administra a
+              VM também pode emitir um novo link de acesso pelo comando de
+              recuperação documentado.
+            </p>
+          </details>
+        </div>
+        <footer class="login-footer">
+          <span data-icon="shield"></span>Acesso privado. Seu dispositivo
+          protege sua chave.
+        </footer>
+      </main>
+    </div>
+    <div id="app" class="app-shell" hidden>
+      <aside class="sidebar" id="sidebar" aria-label="Navegação principal">
+        <a href="#now" class="brand"
+          ><img
+            src="/admin/assets/oak.svg"
+            alt=""
+            width="29"
+            height="29"
+          />oak<span>controle</span></a
+        >
+        <div class="server-switch">
+          <span class="server-emblem" data-icon="tree"></span>
+          <div>
+            <strong>Oak</strong><span id="sidebar-version">Conectando…</span>
+          </div>
+          <span id="sidebar-dot" class="state-dot"></span>
+        </div>
+        <nav id="navigation">
+          <button type="button" data-page="now" aria-current="page">
+            <span data-icon="sun"></span>Agora
+          </button>
+          <button type="button" data-page="world">
+            <span data-icon="map"></span>Mundo
+          </button>
+          <button type="button" data-page="players">
+            <span data-icon="users"></span>Jogadores<span
+              id="nav-players"
+              class="nav-count"
+            ></span>
+          </button>
+          <span class="nav-label">CUIDADOS</span>
+          <button type="button" data-page="backups">
+            <span data-icon="shield"></span>Backups
+          </button>
+          <button type="button" data-page="operations">
+            <span data-icon="activity"></span>Operações<span
+              id="nav-jobs"
+              class="nav-count"
+            ></span>
+          </button>
+          <button type="button" data-page="server">
+            <span data-icon="server"></span>Servidor
+          </button>
+          <span class="nav-label">PREFERÊNCIAS</span>
+          <button type="button" data-page="access">
+            <span data-icon="key"></span>Acesso
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <a class="sidebar-link" href="/" target="_blank" rel="noopener"
+            ><span data-icon="external"></span>Site dos jogadores</a
+          ><button type="button" id="theme-toggle" class="sidebar-link">
+            <span data-icon="moon"></span>Alternar aparência
+          </button>
+          <div class="account">
+            <span id="account-avatar" class="avatar">O</span>
+            <div>
+              <strong id="account-name">Sua conta</strong
+              ><span id="account-role">Proprietário</span>
+            </div>
+            <button
+              id="logout"
+              class="icon-button"
+              type="button"
+              aria-label="Sair"
+              title="Sair"
+            >
+              <span data-icon="logout"></span>
+            </button>
+          </div>
+        </div>
+      </aside>
+      <div class="main-shell">
+        <header class="topbar">
+          <button
+            id="mobile-menu"
+            class="icon-button"
+            type="button"
+            aria-label="Abrir navegação"
+            aria-expanded="false"
+            aria-controls="sidebar"
+          >
+            <span data-icon="menu"></span>
+          </button>
+          <div class="breadcrumb">
+            <span>Oak</span><span class="slash">/</span
+            ><strong id="page-label">Agora</strong>
+          </div>
+          <div class="topbar-actions">
+            <span class="connection" id="connection" role="status"
+              ><span class="state-dot"></span>Conectando</span
+            ><button class="search-trigger" id="search-open" type="button">
+              <span data-icon="search"></span><span>Buscar ou executar</span
+              ><kbd>Ctrl K</kbd></button
+            ><button
+              id="console-open"
+              class="icon-button"
+              type="button"
+              aria-label="Abrir console"
+              title="Console"
+            >
+              <span data-icon="terminal"></span>
+            </button>
+          </div>
+        </header>
+        <div id="demo-banner" class="demo-banner" hidden>
+          <span data-icon="flask"></span>Demonstração local. Dados ilustrativos;
+          as ações não atingem o servidor.
+        </div>
+        <div
+          id="connection-notice"
+          class="connection-notice"
+          role="status"
+          hidden
+        ></div>
+        <main id="content" tabindex="-1">
+          <div id="view" class="view">
+            <div class="loading-state">
+              <span class="skeleton skeleton-title"></span
+              ><span class="skeleton skeleton-line"></span
+              ><span class="skeleton skeleton-surface"></span>
+            </div>
+          </div>
+          <section id="world-view" class="view world-view" hidden></section>
+        </main>
+        <button
+          id="active-operation"
+          class="active-operation"
+          type="button"
+          hidden
+        >
+          <span data-icon="activity"></span>
+          <div>
+            <strong id="active-operation-label"></strong
+            ><span id="active-operation-step"></span>
+          </div>
+          <span class="operation-motion" aria-hidden="true"></span
+          ><span data-icon="arrow-right"></span>
+        </button>
+      </div>
+      <aside id="detail" class="detail-drawer" aria-label="Detalhes" hidden>
+        <div class="drawer-top">
+          <span class="eyebrow" id="detail-kind">DETALHES</span
+          ><button
+            id="detail-close"
+            class="icon-button"
+            type="button"
+            aria-label="Fechar detalhes"
+          >
+            <span data-icon="close"></span>
+          </button>
+        </div>
+        <div id="detail-body"></div>
+      </aside>
+    </div>
+    <dialog
+      id="review-dialog"
+      class="review-dialog"
+      aria-labelledby="review-title"
+    >
+      <form method="dialog" class="dialog-close">
+        <button class="icon-button" aria-label="Fechar revisão">
+          <span data-icon="close"></span>
+        </button>
+      </form>
+      <div id="review-content"></div>
+    </dialog>
+    <dialog
+      id="search-dialog"
+      class="search-dialog"
+      aria-label="Buscar e executar"
+    >
+      <div class="search-input-wrap">
+        <span data-icon="search"></span
+        ><input
+          id="global-search"
+          type="search"
+          placeholder="Um jogador, lugar ou ação…"
+          autocomplete="off"
+          aria-label="Buscar no painel"
+        /><kbd>Esc</kbd>
+      </div>
+      <div id="search-results" class="search-results"></div>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <noscript
+      >Ative o JavaScript para usar o painel administrativo de Oak.</noscript
+    >
+  </body>
+</html>

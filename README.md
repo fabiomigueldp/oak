@@ -2,6 +2,11 @@
 
 A minimal player dashboard for [oak.fabiomigueldp.me](https://oak.fabiomigueldp.me): an embedded BlueMap atlas, online players, public game chat, and a bounded website-to-Minecraft chat bridge.
 
+The private **Oak Control** application at `/admin/` adds passkeys, live oversight,
+local recovery points, reviewed operations, settings and role-based access.
+See the [administration guide](docs/admin-control.md) for the demo, installation,
+tests, recovery procedures and deliberately deferred features.
+
 ## Architecture
 
 ```text
@@ -44,7 +49,7 @@ The preview does not provide `/map/`, `/status.json`, or `/api/`. Those depend o
 
 ## Runtime boundaries
 
-The existing Oracle Ubuntu VM runs Vanilla Minecraft and BlueMap CLI separately. This repository does not provision Minecraft, contain worlds, or distribute Mojang assets. The map is generated outside Git and updates after world saving, snapshot adaptation, and rendering; it is not a live terrain stream.
+The existing Oracle Ubuntu VM runs Fabric Minecraft and BlueMap CLI separately. This repository does not provision Minecraft, contain worlds, or distribute Mojang assets. The map is generated outside Git and updates after world saving, snapshot adaptation, and rendering; it is not a live terrain stream.
 
 Chat uses one shared monitor and Server-Sent Events, capped at 32 simultaneous streams. Website messages are labeled `[Web]`; visitor names are self-selected and are not authenticated Minecraft identities. The server validates the origin and input, limits each IP to one message per 10 seconds and all visitors to 15 messages per minute, and serializes text into a fixed `tellraw` command. RCON credentials remain in the VM's restricted `server.properties` file. Never expose that file or raw server logs.
 
