@@ -66,12 +66,12 @@ def health(map_assets=None, admin_assets=None):
             for route in (('/map/', '/map/index.html') if map_assets else ()):
                 with urllib.request.urlopen('https://oak.fabiomigueldp.me' + route, timeout=10) as response:
                     html = response.read()
-                    profile = html.find(b'/map-profile.js?v=1')
+                    profile = html.find(b'<script src="/map-profile.js?')
                     module = html.find(b'type="module"')
                     if not 0 <= profile < module:
                         raise RuntimeError('Map quality profile is missing or loads too late.')
             for asset, expected in (map_assets or {}).items():
-                with urllib.request.urlopen('https://oak.fabiomigueldp.me/' + asset + '?v=1', timeout=10) as response:
+                with urllib.request.urlopen('https://oak.fabiomigueldp.me/' + asset + '?deployment-check=' + str(time.time_ns()), timeout=10) as response:
                     if response.read() != expected:
                         raise RuntimeError('Unexpected map profile asset: ' + asset)
             if admin_assets:
