@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "oak_telemetry",
+  "version": "1.0.0",
+  "name": "Oak Telemetry",
+  "description": "Private, read-only player telemetry for Oak Control.",
+  "environment": "server",
+  "entrypoints": { "main": ["me.oak.telemetry.OakTelemetry"] },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "26.3-pre-2",
+    "java": ">=25",
+    "fabric-lifecycle-events-v1": "*"
+  }
+}

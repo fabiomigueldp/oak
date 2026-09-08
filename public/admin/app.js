@@ -811,9 +811,34 @@ function updateWorld() {
   );
   sendWorldPlayers();
 }
+let livePositions = null, positionStream = null, hadLivePositions = false;
+function syncPositionStream() {
+  const active = state.session && !state.session.demo && state.page === "world" && !state.historySample && !document.hidden;
+  if (!active) {
+    positionStream?.close();
+    positionStream = null;
+    livePositions = null;
+  } else if (!positionStream) {
+    positionStream = new EventSource("/admin/api/positions/stream");
+    positionStream.onmessage = (event) => {
+      try {
+        const frame = JSON.parse(event.data);
+        livePositions = frame.fresh ? frame : null;
+        if (frame.fresh) hadLivePositions = true;
+        sendWorldPlayers();
+      } catch { livePositions = null; }
+    };
+    positionStream.onerror = () => { livePositions = null; };
+    positionStream.addEventListener("session-ended", showLogin);
+  }
+}
+setInterval(syncPositionStream, 1000);
+addEventListener("visibilitychange", syncPositionStream);
+addEventListener("pagehide", () => positionStream?.close());
 function sendWorldPlayers() {
   if (!worldFrame || !state.session || state.page !== "world") return;
-  const s = state.historySample || snapshot();
+  const live = livePositions && Date.now() / 1000 - livePositions.sampled_at < 3 ? livePositions : null;
+  const s = state.historySample || live || (hadLivePositions ? {fresh: false, players: []} : snapshot());
   const fresh =
     s.fresh && (state.historySample || Date.now() / 1000 - s.sampled_at < 30);
   worldFrame.contentWindow.postMessage(
@@ -823,6 +848,7 @@ function sendWorldPlayers() {
       sampled_at: s.sampled_at,
       follow: following,
       history: Boolean(state.historySample),
+      realtime: !state.historySample && Boolean(live),
     },
     location.origin,
   );
@@ -1537,6 +1563,10 @@ async function enter(session) {
 }
 function showLogin() {
   state.stream?.close();
+  positionStream?.close();
+  positionStream = null;
+  livePositions = null;
+  hadLivePositions = false;
   if (state.session) $("#login-demo").hidden = !state.session.demo;
   state.session = null;
   state.overview = {};

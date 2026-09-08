@@ -20,6 +20,7 @@ import time
 import uuid
 
 from .domain import BACKUP, FIELDS, NAME, validate
+from .telemetry import snapshot as live_snapshot
 
 GIB = 1024 ** 3
 SERVICES = ('oak.service', 'oak-map.service', 'oak-backup.service', 'oak-geyser.service', 'oak-bedrock-bridge.service', 'oak-chat.service', 'oak-web-collector.service')
@@ -193,8 +194,11 @@ class Runtime:
             public = {}
         fresh = now - public.get('updated', 0) < 30
         players = [{'name': name, 'platform': 'bedrock' if name.startswith('.') else 'java', 'position': None, 'dimension': None} for name in public.get('players', []) if isinstance(name, str) and NAME.fullmatch(name)]
-        # Read-only, bounded RCON sampling. No sampling when nobody is online.
-        if fresh and players:
+        live = live_snapshot() if self.root == Path('/srv/oak') else None
+        if live:
+            players = live['players']
+        # RCON remains a bounded fallback while the optional mod is unavailable.
+        if not live and fresh and players:
             probe = Rcon(self.server / 'server.properties', timeout=.75)
             deadline = time.monotonic() + 3
             count = min(12, len(players))
@@ -250,7 +254,7 @@ class Runtime:
         metadata = self.control / 'last-save.json'
         saved = json.loads(metadata.read_text()) if metadata.exists() else None
         render = next((s for s in services if s['id'] == 'oak-map.service'), {})
-        return {'sampled_at': now, 'source_updated': public.get('updated'), 'fresh': fresh, 'online': bool(public.get('online') and fresh), 'players': players, 'max_players': int(config.get('max-players', 12)), 'version': observed_version, 'installed_versions': versions, 'loader': 'Fabric' if (self.server / 'fabric-server-launch.jar').exists() else 'Minecraft', 'mods': sorted(p.name for p in (self.server / 'mods').glob('*.jar')), 'services': services, 'disk': {'total': disk.total, 'free': disk.free, 'used': disk.used}, 'memory': {'total': mem.get('MemTotal'), 'available': mem.get('MemAvailable')}, 'cpu_count': os.cpu_count(), 'load': list(os.getloadavg()) if hasattr(os, 'getloadavg') else None, 'tps': None, 'mspt': None, 'last_save': saved, 'map': {'running': render.get('ActiveState') == 'activating', 'last_finished': render.get('ExecMainExitTimestamp'), 'result': render.get('Result'), 'blocked': (self.root / 'web/map-warning.json').exists(), 'url': '/map/', 'telemetry': 'bounded-rcon'}, 'warnings': public.get('warnings', []), 'demo': False}
+        return {'sampled_at': now, 'source_updated': public.get('updated'), 'fresh': fresh, 'online': bool(public.get('online') and fresh), 'players': players, 'max_players': int(config.get('max-players', 12)), 'version': observed_version, 'installed_versions': versions, 'loader': 'Fabric' if (self.server / 'fabric-server-launch.jar').exists() else 'Minecraft', 'mods': sorted(p.name for p in (self.server / 'mods').glob('*.jar')), 'services': services, 'disk': {'total': disk.total, 'free': disk.free, 'used': disk.used}, 'memory': {'total': mem.get('MemTotal'), 'available': mem.get('MemAvailable')}, 'cpu_count': os.cpu_count(), 'load': list(os.getloadavg()) if hasattr(os, 'getloadavg') else None, 'tps': None, 'mspt': None, 'last_save': saved, 'map': {'running': render.get('ActiveState') == 'activating', 'last_finished': render.get('ExecMainExitTimestamp'), 'result': render.get('Result'), 'blocked': (self.root / 'web/map-warning.json').exists(), 'url': '/map/', 'telemetry': 'fabric' if live else 'bounded-rcon'}, 'warnings': public.get('warnings', []), 'demo': False}
 
     def backups(self):
         items = []

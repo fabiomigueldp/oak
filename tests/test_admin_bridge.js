@@ -15,7 +15,7 @@ test("ordinary public map does not activate the private overlay", () => {
 
 test("private players survive BlueMap file refreshes and expire when updates stop", () => {
   const handlers = {};
-  let tick, now = 100000;
+  let tick, frame, now = 100000;
   class MarkerSet {
     constructor(id) { this.data = {id}; this.children = []; this.isMarkerSet = true; }
     add(marker) { this.children.push(marker); marker.parent = this; }
@@ -27,7 +27,7 @@ test("private players survive BlueMap file refreshes and expire when updates sto
     constructor(id) {
       this.data = {id}; this.disposals = 0;
       this.element = {replaceChildren() {}};
-      this.anchor = {set() {}}; this.position = {set() {}};
+      this.anchor = {set() {}}; this.position = {set: (...p) => { this.coordinates = p; }};
     }
     dispose() { this.disposals++; }
   }
@@ -42,6 +42,7 @@ test("private players survive BlueMap file refreshes and expire when updates sto
       createElementNS: () => ({setAttribute() {}, append() {}})
     },
     addEventListener: (name, fn) => handlers[name] = fn,
+    requestAnimationFrame: fn => { frame = fn; return 1; }, cancelAnimationFrame() {},
     setInterval: fn => { tick = fn; return 1; }, clearInterval() {}
   });
   const update = () => handlers.message({origin: parent.location.origin, source: parent,
@@ -54,6 +55,17 @@ test("private players survive BlueMap file refreshes and expire when updates sto
     assert.equal(root.children[0], marker);
     assert.equal(marker.disposals, 0);
   }
+  const live = x => handlers.message({origin: parent.location.origin, source: parent,
+    data: {type: 'oak-admin-players', realtime: true, players: [{name: 'Player',
+      position: [x,64,0], dimension: 'minecraft:overworld', sampled_at: now / 1000}]}});
+  live(0);
+  now += 100; live(10);
+  now += 100; frame();
+  assert.equal(marker.coordinates[0], 5, 'buffer interpolates observed samples');
+  now += 100; frame();
+  assert.equal(marker.coordinates[0], 10, 'does not extrapolate beyond observed position');
+  live(100);
+  assert.equal(marker.coordinates[0], 100, 'large teleport snaps immediately');
   now += 16000; tick();
   assert.equal(root.children.length, 0);
   assert.equal(marker.disposals, 1);

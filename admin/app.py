@@ -20,6 +20,7 @@ from .domain import OPERATIONS, ROLES, clean_text, place, validate
 from .settings import Settings
 from .store import Conflict, Store, digest, encode
 from .worker import Worker
+from .telemetry import LivePositions
 
 STATIC = Path(__file__).resolve().parents[1] / 'public' / 'admin'
 API = '/admin/api'
@@ -38,6 +39,8 @@ def create_app(settings=None, agent=None, *, background=True):
     worker = Worker(store, agent, settings.poll_seconds)
     login_attempts = deque(maxlen=200)
     streams = asyncio.Semaphore(12)
+    position_streams = asyncio.Semaphore(12)
+    positions = LivePositions()
 
     @asynccontextmanager
     async def lifespan(app):
@@ -237,6 +240,36 @@ def create_app(settings=None, agent=None, *, background=True):
                     await asyncio.sleep(3)
             finally:
                 streams.release()
+        return StreamingResponse(events(), media_type='text/event-stream', headers={'X-Accel-Buffering': 'no'})
+
+    @app.get(API + '/positions/stream')
+    async def position_stream(request: Request):
+        current(request)
+        if position_streams.locked():
+            raise HTTPException(503, 'Muitas conexões abertas.')
+        await position_streams.acquire()
+        token = request.cookies.get(settings.cookie)
+        async def events():
+            positions.subscribe()
+            try:
+                last, checked, heartbeat = None, 0, 0
+                while not await request.is_disconnected():
+                    now = time.monotonic()
+                    if now - checked >= 1:
+                        if not store.current_session(token):
+                            yield 'event: session-ended\ndata: {}\n\n'
+                            break
+                        checked = now
+                    frame = positions.frame
+                    if frame and time.time() - frame['sampled_at'] >= 3:
+                        frame = None
+                    if frame is not last or now - heartbeat >= 1:
+                        yield 'data: ' + encode(frame or {'fresh': False, 'players': []}) + '\n\n'
+                        last, heartbeat = frame, now
+                    await asyncio.sleep(.05)
+            finally:
+                await positions.unsubscribe()
+                position_streams.release()
         return StreamingResponse(events(), media_type='text/event-stream', headers={'X-Accel-Buffering': 'no'})
 
     @app.get(API + '/events')

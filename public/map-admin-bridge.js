@@ -42,7 +42,10 @@
     players = [],
     follow = null,
     focusing = false,
-    history = false;
+    history = false,
+    realtime = false,
+    animation = null,
+    followedAt = 0;
   const markers = new Map();
   const valid = (p) =>
     Array.isArray(p) &&
@@ -95,16 +98,17 @@
         typeof p.name !== "string" ||
         !/^[.]?[A-Za-z0-9_]{1,16}$/.test(p.name) ||
         !valid(p.position) ||
-        (!history && Date.now() / 1000 - p.sampled_at > 30) ||
+        (!history && Date.now() / 1000 - p.sampled_at > (realtime ? 3 : 30)) ||
         availableMap(p.dimension) !== app.mapViewer.map.data.id
       )
         continue;
-      present.add(p.name);
-      let marker = markers.get(p.name);
+      const key = p.uuid || p.name;
+      present.add(key);
+      let marker = markers.get(key);
       // NormalMarkerManager replaces root marker sets every ten seconds.
       // Private leaf markers stay outside that file-managed collection.
       if (marker && marker.parent !== set) {
-        markers.delete(p.name);
+        markers.delete(key);
         marker = null;
       }
       if (!marker) {
@@ -125,9 +129,26 @@
         marker.data.listed = false;
         marker.anchor.set(0.5, 1);
         set.add(marker);
-        markers.set(p.name, marker);
+        markers.set(key, marker);
       }
-      marker.position.set(...p.position);
+      if (!realtime || history) {
+        marker.oakSamples = null;
+        marker.position.set(...p.position);
+      } else {
+        marker.oakName = p.name;
+        const samples = marker.oakSamples || [];
+        const last = samples.at(-1);
+        if (!last || p.sampled_at > last.stamp) {
+          // Never animate a teleport, dimension change, or resumed stale stream.
+          const reset = !last || p.dimension !== last.dimension ||
+            p.sampled_at - last.stamp > 1.5 ||
+            Math.hypot(...p.position.map((v, i) => v - last.position[i])) > 24;
+          const sample = {position: p.position.slice(), dimension: p.dimension,
+            stamp: p.sampled_at, at: Date.now()};
+          marker.oakSamples = reset ? [sample] : [...samples.slice(-4), sample];
+          if (reset) marker.position.set(...p.position);
+        }
+      }
     }
     for (const [name, marker] of markers)
       if (!present.has(name)) {
@@ -135,10 +156,40 @@
         markers.delete(name);
       }
     const target = live.find((p) => p.name === follow);
-    if (target)
+    if (target && (!realtime || availableMap(target.dimension) !== app.mapViewer.map.data.id))
       focus(target).catch(() => {
         follow = null;
       });
+  }
+  function animate() {
+    animation = null;
+    if (!realtime || history || document.hidden || Date.now() - received > 3000) return;
+    const time = Date.now() - 150;
+    let pending = false;
+    for (const marker of markers.values()) {
+      const samples = marker.oakSamples;
+      if (!samples?.length) continue;
+      let a = samples[0], b = a;
+      for (const sample of samples) {
+        b = sample;
+        if (sample.at >= time) break;
+        a = sample;
+      }
+      const ratio = a === b ? 1 : Math.max(0, Math.min(1, (time - a.at) / (b.at - a.at)));
+      const position = a.position.map((v, i) => v + (b.position[i] - v) * ratio);
+      if (samples.at(-1).at > time && samples.length > 1 &&
+          samples.at(-1).position.some((v, i) => v !== samples.at(-2).position[i])) pending = true;
+      marker.position.set(...position);
+      if (marker.oakName === follow) {
+        const controls = window.bluemap?.mapViewer?.controlsManager;
+        controls?.position.set(...position);
+        if (Date.now() - followedAt > 250) {
+          window.bluemap.mapViewer.updateLoadedMapArea();
+          followedAt = Date.now();
+        }
+      }
+    }
+    if (pending) animation = requestAnimationFrame(animate);
   }
   addEventListener("message", (event) => {
     if (event.origin !== location.origin || event.source !== parent) return;
@@ -148,12 +199,15 @@
       received = Date.now();
       follow = data.follow;
       history = data.history === true;
+      realtime = data.realtime === true;
       update();
+      if (realtime && animation === null && !document.hidden) animation = requestAnimationFrame(animate);
     } else if (data?.type === "oak-admin-focus") focus(data).catch(() => {});
   });
   const timer = setInterval(update, 1000);
   addEventListener("pagehide", () => {
     clearInterval(timer);
+    if (animation !== null) cancelAnimationFrame(animation);
     for (const marker of markers.values()) set?.remove(marker);
     markers.clear();
   });
