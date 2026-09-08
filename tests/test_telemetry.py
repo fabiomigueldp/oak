@@ -4,12 +4,24 @@ from pathlib import Path
 import sys
 import time
 import unittest
+import base64
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from admin.telemetry import decode
+from admin.telemetry import appearance
 
 
 class FrameTests(unittest.TestCase):
+    def test_profile_never_forwards_remote_urls_or_signatures(self):
+        for url in ('http://127.0.0.1/private', 'https://textures.minecraft.net.evil.test/texture/'+'a'*64):
+            encoded = base64.b64encode(json.dumps({'textures': {'SKIN': {'url': url}}}).encode()).decode()
+            self.assertEqual(appearance({'textures': encoded})['skin'], '')
+        encoded = base64.b64encode(json.dumps({'textures': {'SKIN': {'url': 'http://textures.minecraft.net/texture/'+'a'*64, 'metadata': {'model':'slim'}}}}).encode()).decode()
+        value = appearance({'textures': encoded})
+        self.assertEqual(value['skin'], 'a'*64)
+        self.assertTrue(value['slim'])
+        self.assertNotIn('textures', value)
+
     def frame(self):
         return {'version': 1, 'tick': 2, 'sampled_at': time.time(), 'players': [
             {'uuid': '00000000-0000-4000-8000-000000000001', 'name': 'Synthetic',

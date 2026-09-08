@@ -27,4 +27,9 @@ jobs:
       - run: node --check public/admin/model.js
       - run: node --check public/admin/demo-map.js
       - run: node --check public/map-admin-bridge.js
+      - run: node --check public/map-player-avatar.js
+      - run: npm install --prefix "$RUNNER_TEMP/oak-avatar-check" --no-audit --no-fund three@0.147.0
+      - run: node --test tests/test_avatar.js
+        env:
+          OAK_TEST_THREE: ${{ runner.temp }}/oak-avatar-check/node_modules/three/build/three.cjs
       - run: node --test tests/test_admin_model.mjs tests/test_admin_bridge.js

@@ -18,6 +18,7 @@ TARGETS = {
     'public/map-profile.js': Path('/srv/oak/web/map-profile.js'),
     'public/map-profile.css': Path('/srv/oak/web/map-profile.css'),
     'public/map-admin-bridge.js': Path('/srv/oak/web/map-admin-bridge.js'),
+    'public/map-player-avatar.js': Path('/srv/oak/web/map-player-avatar.js'),
     'public/map-admin-bridge.css': Path('/srv/oak/web/map-admin-bridge.css'),
     'server/chat-server.py': Path('/srv/oak/chat-server.py'),
     'server/collect.py': Path('/srv/oak/collect.py'),

@@ -11,7 +11,7 @@ import time
 import uuid
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .agent import AgentClient
@@ -21,6 +21,7 @@ from .settings import Settings
 from .store import Conflict, Store, digest, encode
 from .worker import Worker
 from .telemetry import LivePositions
+from .avatar_assets import SkinCache
 
 STATIC = Path(__file__).resolve().parents[1] / 'public' / 'admin'
 API = '/admin/api'
@@ -41,6 +42,7 @@ def create_app(settings=None, agent=None, *, background=True):
     streams = asyncio.Semaphore(12)
     position_streams = asyncio.Semaphore(12)
     positions = LivePositions()
+    skins = SkinCache()
 
     @asynccontextmanager
     async def lifespan(app):
@@ -271,6 +273,24 @@ def create_app(settings=None, agent=None, *, background=True):
                 await positions.unsubscribe()
                 position_streams.release()
         return StreamingResponse(events(), media_type='text/event-stream', headers={'X-Accel-Buffering': 'no'})
+
+    @app.get(API + '/avatar/skin/{texture}')
+    def avatar_skin(request: Request, texture: str):
+        current(request)
+        try:
+            return Response(skins.get(texture), media_type='image/png')
+        except (OSError, ValueError):
+            raise HTTPException(404, 'Skin indisponível.')
+
+    @app.get(API + '/avatar/texture/{asset:path}')
+    def avatar_texture(request: Request, asset: str):
+        current(request)
+        if not re.fullmatch(r'(?:item|block|entity/equipment/humanoid|entity/equipment/humanoid_leggings|entity/equipment/wings|entity/player/(?:wide|slim))/[a-z0-9_]+\.png', asset):
+            raise HTTPException(404)
+        path = settings.state / 'avatar-assets' / asset
+        if not path.is_file():
+            raise HTTPException(404)
+        return FileResponse(path, media_type='image/png')
 
     @app.get(API + '/events')
     def history(request: Request, after: int = 0, limit: int = 100):

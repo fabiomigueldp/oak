@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -34,7 +35,8 @@ def main():
     directory.chmod(0o2750)
     Path('/etc/tmpfiles.d/oak-telemetry.conf').write_text('d /run/oak-telemetry 2750 oak oak-control -\n')
     dropin = Path('/etc/systemd/system/oak.service.d/95-telemetry.conf')
-    dropin.write_text('[Service]\nReadWritePaths=/run/oak-telemetry\n')
+    # The existing stop helper is root-only; do not broaden its file permissions.
+    dropin.write_text('[Service]\nReadWritePaths=/run/oak-telemetry\nExecStop=\nExecStop=+/usr/local/sbin/oak-admin stop\n')
     release = Path('/opt/oak-telemetry/releases') / args.commit
     release.mkdir(parents=True, exist_ok=False)
     with tempfile.TemporaryDirectory(prefix='oak-telemetry-') as output:
@@ -49,6 +51,20 @@ def main():
         staged.chmod(0o644)
         staged.replace(target)
     run('systemctl', 'daemon-reload')
+    # Runtime Minecraft textures stay outside Git and the public website.
+    textures = Path('/var/lib/oak-control/avatar-assets')
+    control_uid = pwd.getpwnam('oak-control').pw_uid
+    with zipfile.ZipFile('/srv/oak/map-test/data/minecraft-client-26.3-pre-2.jar') as jar:
+        prefix = 'assets/minecraft/textures/'
+        for name in jar.namelist():
+            relative = name.removeprefix(prefix)
+            if not name.startswith(prefix) or not re.fullmatch(r'(?:item|block|entity/equipment/humanoid|entity/equipment/humanoid_leggings|entity/equipment/wings|entity/player/(?:wide|slim))/[a-z0-9_]+\.png', relative):
+                continue
+            path = textures / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(jar.read(name))
+            os.chown(path, control_uid, gid)
+            path.chmod(0o600)
     print('Telemetry staged: ' + args.commit + '. Minecraft must be restarted separately to load the mod.')
 
 

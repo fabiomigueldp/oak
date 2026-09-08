@@ -29,6 +29,35 @@ or gaps above 1.5 seconds. It never extrapolates indefinitely. Hidden tabs close
 their live stream. Rendering rate is independent of the 10 Hz capture rate.
 Full map/terrain rendering remains completely independent.
 
+## Player avatars
+
+The extended frame includes body/head direction, pitch, pose, item use, a latched
+arm-swing sequence, and equipment. Equipment/profile snapshots refresh twice per
+second. Appearance is omitted from unchanged host frames and reconstructed by
+the shared API receiver. Game profile signatures and external URLs never leave
+the receiver; only allowlisted Minecraft texture hashes are exposed. Skins use a
+bounded memory cache behind authenticated endpoints, with redirects disabled.
+
+`public/map-player-avatar.js` uses BlueMap 5.23's exported Three.js 0.147 instance,
+existing marker scene, and existing renderer. It never creates a WebGL context.
+The model includes standard/slim skins, outer skin layers, classic skin fallback,
+vanilla humanoid armor with leather dyes, cape/elytra, and held item sprites or
+simple textured block cubes. It interpolates facing and derives walking from
+observed displacement; poses and arm animations represent server state. Distant
+and offscreen models are hidden while the accessible location marker remains.
+Texture references and per-avatar geometry/materials are released on removal.
+
+The installer extracts only allowlisted vanilla PNG textures from the already
+installed client archive into private runtime state. These assets are not Git
+content. Armor trims, enchantment glint, arbitrary resource-pack item models,
+Bedrock custom geometry/emotes, and vehicle models are not replicated. Unsupported
+held textures are hidden; unavailable skins use the standard fallback. These are
+visual representations of authoritative states, not a full Minecraft renderer.
+
+Geometry checks use Three.js 0.147 with a synthetic texture loader and no GPU:
+set `OAK_TEST_THREE` to the absolute `three/build/three.cjs` path, then run
+`node --test tests/test_avatar.js`.
+
 ## Installation
 
 Run the regular website deployment and separate `scripts/install-control.py`

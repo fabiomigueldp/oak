@@ -1,1 +1,5 @@
 @import url("/admin/assets/player-pin.css?v=1");
+
+.oak-player-model-visible svg { opacity: .7; transform: scale(.45); transform-origin: 50% 100%; }
+.oak-player-model-visible .oak-player-name { opacity: .75; }
+.oak-player-model-visible:hover svg, .oak-player-model-visible:focus-visible svg { opacity: 1; }

@@ -95,7 +95,7 @@ class ApiTests(unittest.TestCase):
         return response.json()['user']['id']
 
     def test_private_routes_do_not_leak_without_session(self):
-        for path in ('/overview', '/jobs', '/players', '/backups', '/configuration', '/events', '/places', '/schedules', '/access', '/positions/stream'):
+        for path in ('/overview', '/jobs', '/players', '/backups', '/configuration', '/events', '/places', '/schedules', '/access', '/positions/stream', '/avatar/skin/'+'a'*64, '/avatar/texture/item/diamond_sword.png'):
             self.assertEqual(self.client.get(API + path).status_code, 401, path)
 
     def test_only_illustrative_map_can_be_framed_in_demo(self):

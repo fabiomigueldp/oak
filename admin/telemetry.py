@@ -5,9 +5,44 @@ import math
 import socket
 import time
 import uuid
+import base64
+import re
 
 SOCKET = '/run/oak-telemetry/positions.sock'
 LIMIT = 65536
+
+
+def appearance(data):
+    """Keep only bounded rendering fields; never forward profile signatures/URLs."""
+    result = {'skin': '', 'cape': '', 'slim': False, 'equipment': {}, 'main_arm': 'RIGHT'}
+    try:
+        encoded = data.get('textures', '')
+        if isinstance(encoded, str) and len(encoded) <= 8192:
+            profile = json.loads(base64.b64decode(encoded))
+            skin = profile.get('textures', {}).get('SKIN', {})
+            match = re.fullmatch(r'https?://textures\.minecraft\.net/texture/([a-f0-9]{32,64})', skin.get('url', ''))
+            if match:
+                result.update(skin=match[1], slim=skin.get('metadata', {}).get('model') == 'slim')
+            cape = profile.get('textures', {}).get('CAPE', {})
+            match = re.fullmatch(r'https?://textures\.minecraft\.net/texture/([a-f0-9]{32,64})', cape.get('url', ''))
+            if match:
+                result['cape'] = match[1]
+    except (ValueError, TypeError, AttributeError):
+        pass
+    if data.get('main_arm') == 'LEFT':
+        result['main_arm'] = 'LEFT'
+    for slot in ('head', 'chest', 'legs', 'feet', 'mainhand', 'offhand'):
+        item = data.get('equipment', {}).get(slot)
+        if not isinstance(item, dict):
+            continue
+        identifier = item.get('id', '')
+        asset = item.get('asset', '')
+        if not isinstance(identifier, str) or not re.fullmatch(r'[a-z0-9_]+:[a-z0-9_/.-]{1,100}', identifier):
+            continue
+        result['equipment'][slot] = {'id': identifier, 'asset': asset if isinstance(asset, str) and re.fullmatch(r'minecraft:[a-z0-9_]{1,60}', asset) else '',
+            'color': item.get('color', 0xA06540) if type(item.get('color')) is int and 0 <= item['color'] <= 0xFFFFFF else 0xA06540,
+            'enchanted': item.get('enchanted') is True}
+    return result
 
 
 def decode(raw):
@@ -33,6 +68,11 @@ def decode(raw):
             raise ValueError('Invalid rotation.')
         player['sampled_at'] = stamp
         player['platform'] = 'bedrock' if player['name'].startswith('.') else 'java'
+        if 'appearance' in player:
+            player['appearance'] = appearance(player['appearance'])
+        for key in ('body_yaw', 'pitch', 'swing'):
+            value = player.get(key, 0)
+            player[key] = value if type(value) in (float, int) and math.isfinite(value) else 0
     return {'players': players, 'sampled_at': stamp, 'fresh': True, 'source': 'fabric', 'tick': data.get('tick')}
 
 
@@ -77,11 +117,21 @@ class LivePositions:
             writer = None
             try:
                 reader, writer = await asyncio.open_unix_connection(self.path, limit=LIMIT)
+                appearances = {}
                 while True:
                     raw = await asyncio.wait_for(reader.readline(), timeout=3)
                     if not raw or len(raw) > LIMIT:
                         raise ValueError('Telemetry disconnected.')
-                    self.frame = decode(raw)
+                    frame = decode(raw)
+                    for player in frame['players']:
+                        uid = player['uuid']
+                        if 'appearance' in player:
+                            appearances[uid] = player['appearance']
+                        elif uid in appearances:
+                            player['appearance'] = appearances[uid]
+                    online = {p['uuid'] for p in frame['players']}
+                    appearances = {k: v for k, v in appearances.items() if k in online}
+                    self.frame = frame
             except (OSError, ValueError, KeyError, TypeError, AttributeError, asyncio.TimeoutError):
                 self.frame = None
             finally:

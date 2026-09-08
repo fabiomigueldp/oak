@@ -45,7 +45,11 @@
     history = false,
     realtime = false,
     animation = null,
-    followedAt = 0;
+    followedAt = 0,
+    observedViewer = null;
+  function cameraChanged() {
+    if (realtime && animation === null && !document.hidden) animation = requestAnimationFrame(animate);
+  }
   const markers = new Map();
   const valid = (p) =>
     Array.isArray(p) &&
@@ -73,8 +77,8 @@
       if (app.mapViewer.map?.data.id !== id) await app.switchMap(id);
       app.mapViewer.controlsManager.position.set(...player.position);
       app.mapViewer.controlsManager.distance = Math.max(
-        120,
-        app.mapViewer.controlsManager.distance,
+        8,
+        Math.min(32, app.mapViewer.controlsManager.distance),
       );
       app.updatePageAddress();
       app.mapViewer.updateLoadedMapArea();
@@ -86,8 +90,13 @@
     const app = window.bluemap,
       api = window.BlueMap;
     if (!app?.mapViewer?.map || !api?.HtmlMarker) return;
+    if (observedViewer !== app.mapViewer) {
+      observedViewer?.events?.removeEventListener('bluemapCameraMoved', cameraChanged);
+      observedViewer = app.mapViewer;
+      observedViewer.events?.addEventListener('bluemapCameraMoved', cameraChanged);
+    }
     if (set !== app.mapViewer.markers) {
-      for (const marker of markers.values()) set?.remove(marker);
+      for (const marker of markers.values()) { marker.oakAvatar?.dispose(); set?.remove(marker); }
       markers.clear();
       set = app.mapViewer.markers;
     }
@@ -108,6 +117,7 @@
       // NormalMarkerManager replaces root marker sets every ten seconds.
       // Private leaf markers stay outside that file-managed collection.
       if (marker && marker.parent !== set) {
+        marker.oakAvatar?.dispose();
         markers.delete(key);
         marker = null;
       }
@@ -130,10 +140,19 @@
         marker.anchor.set(0.5, 1);
         set.add(marker);
         markers.set(key, marker);
+        if (window.OakPlayerAvatar && api.Three) {
+          marker.oakAvatar = new window.OakPlayerAvatar(marker, app.mapViewer);
+          marker.oakLabel = label;
+        }
       }
+      marker.oakAvatar?.update(p);
       if (!realtime || history) {
         marker.oakSamples = null;
         marker.position.set(...p.position);
+        if (marker.oakAvatar) {
+          marker.oakAvatar.root.visible = false;
+          marker.oakLabel.classList.remove('oak-player-model-visible');
+        }
       } else {
         marker.oakName = p.name;
         const samples = marker.oakSamples || [];
@@ -143,7 +162,7 @@
           const reset = !last || p.dimension !== last.dimension ||
             p.sampled_at - last.stamp > 1.5 ||
             Math.hypot(...p.position.map((v, i) => v - last.position[i])) > 24;
-          const sample = {position: p.position.slice(), dimension: p.dimension,
+          const sample = {position: p.position.slice(), dimension: p.dimension, yaw: p.yaw, body_yaw: p.body_yaw,
             stamp: p.sampled_at, at: Date.now()};
           marker.oakSamples = reset ? [sample] : [...samples.slice(-4), sample];
           if (reset) marker.position.set(...p.position);
@@ -152,6 +171,7 @@
     }
     for (const [name, marker] of markers)
       if (!present.has(name)) {
+        marker.oakAvatar?.dispose();
         set.remove(marker);
         markers.delete(name);
       }
@@ -180,6 +200,11 @@
       if (samples.at(-1).at > time && samples.length > 1 &&
           samples.at(-1).position.some((v, i) => v !== samples.at(-2).position[i])) pending = true;
       marker.position.set(...position);
+      if (marker.oakAvatar) {
+        const active = marker.oakAvatar.render(position, a, b, ratio, marker.oakName === follow);
+        marker.oakLabel.classList.toggle('oak-player-model-visible', marker.oakAvatar.root.visible);
+        pending = pending || active;
+      }
       if (marker.oakName === follow) {
         const controls = window.bluemap?.mapViewer?.controlsManager;
         controls?.position.set(...position);
@@ -189,7 +214,10 @@
         }
       }
     }
-    if (pending) animation = requestAnimationFrame(animate);
+    if (pending) {
+      window.bluemap?.mapViewer?.redraw?.();
+      animation = requestAnimationFrame(animate);
+    }
   }
   addEventListener("message", (event) => {
     if (event.origin !== location.origin || event.source !== parent) return;
@@ -207,8 +235,9 @@
   const timer = setInterval(update, 1000);
   addEventListener("pagehide", () => {
     clearInterval(timer);
+    observedViewer?.events?.removeEventListener('bluemapCameraMoved', cameraChanged);
     if (animation !== null) cancelAnimationFrame(animation);
-    for (const marker of markers.values()) set?.remove(marker);
+    for (const marker of markers.values()) { marker.oakAvatar?.dispose(); set?.remove(marker); }
     markers.clear();
   });
 })();
