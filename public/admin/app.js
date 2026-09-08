@@ -151,13 +151,7 @@ function heading(title, description, ...actions) {
   return el(
     "div",
     "page-heading",
-    el(
-      "div",
-      "",
-      el("span", "eyebrow", "SEU MUNDO, SOB SEUS CUIDADOS"),
-      el("h1", "", title),
-      el("p", "", description),
-    ),
+    el("div", "", el("h1", "", title), description && el("p", "", description)),
     el("div", "page-actions", ...actions),
   );
 }
@@ -244,7 +238,7 @@ function closeDrawer() {
   drawerFocus?.focus();
 }
 function form(title, fields, label, action) {
-  const f = el("form", "inline-form", el("h3", "", title), ...fields);
+  const f = el("form", "inline-form", title && el("h3", "", title), ...fields);
   const submit = el("button", "button primary", label);
   submit.type = "submit";
   f.append(submit);
@@ -281,7 +275,6 @@ async function operation(kind, params = {}) {
     "button " + (kind === "restore_backup" ? "danger" : "primary"),
   );
   content.replaceChildren(
-    el("span", "eyebrow", "REVISE ANTES DE CONTINUAR"),
     el("h2", "", spec.label),
     el("p", "", review.impact),
     el(
@@ -349,7 +342,7 @@ async function showJob(id, background = false) {
     "OPERAÇÃO",
     el("h2", "", job.label),
     badge(JOB_STATES[job.state], job.state),
-    facts({ Criada: time(job.created, true), Identificador: job.id }),
+    facts({ Criada: time(job.created, true) }),
     el(
       "ol",
       "review-steps",
@@ -368,7 +361,16 @@ async function showJob(id, background = false) {
     ),
     job.error && el("div", "notice warning", job.error),
     job.result &&
-      el("pre", "console-output", JSON.stringify(job.result, null, 2)),
+      el(
+        "details",
+        "technical-details",
+        el("summary", "", "Detalhes técnicos"),
+        el(
+          "pre",
+          "console-output",
+          JSON.stringify({ id: job.id, ...job.result }, null, 2),
+        ),
+      ),
     el(
       "div",
       "detail-actions",
@@ -441,7 +443,6 @@ function renderNow() {
     "div",
     "atlas-peek",
     cover,
-    el("span", "peek-label", "REGISTRO DO MUNDO"),
     el(
       "div",
       "peek-content",
@@ -452,10 +453,10 @@ function renderNow() {
           "h2",
           "",
           !s.fresh
-            ? "Aguardando uma nova observação."
+            ? "Mapa do mundo"
             : players.length
-              ? "Há histórias acontecendo."
-              : "Um mundo esperando por você.",
+              ? "Jogadores no mundo"
+              : "Mapa do mundo",
         ),
         el(
           "p",
@@ -477,12 +478,7 @@ function renderNow() {
     "div",
     "panel protection-panel",
     icon("shield-check"),
-    el("span", "eyebrow", "PROTEÇÃO LOCAL"),
-    el(
-      "h2",
-      "",
-      points.length ? "Progresso preservado." : "Crie seu primeiro backup.",
-    ),
+    el("h2", "", points.length ? "Backups locais" : "Nenhum backup"),
     el(
       "p",
       "muted",
@@ -492,12 +488,7 @@ function renderNow() {
     ),
     points[0] && badge(proof(points[0]).label, proof(points[0]).state),
     can("backup") &&
-      button(
-        "Criar ponto de recuperação",
-        () => newBackup(),
-        "button primary",
-        "plus",
-      ),
+      button("Criar backup", () => newBackup(), "button primary", "plus"),
     button(
       "Ver backups",
       () => navigate("backups"),
@@ -509,7 +500,15 @@ function renderNow() {
     "div",
     "resource-strip",
     ...[
-      [bytes(Number.isFinite(s.memory?.total) && Number.isFinite(s.memory?.available) ? s.memory.total - s.memory.available : undefined), "Memória em uso"],
+      [
+        bytes(
+          Number.isFinite(s.memory?.total) &&
+            Number.isFinite(s.memory?.available)
+            ? s.memory.total - s.memory.available
+            : undefined,
+        ),
+        "Memória em uso",
+      ],
       [bytes(s.disk?.free), "Livres na Oracle"],
       [s.load?.[0]?.toFixed(2) || "—", `Carga · ${s.cpu_count || "—"} CPUs`],
       [s.tps == null ? "Não medido" : String(s.tps), "TPS do jogo"],
@@ -520,7 +519,7 @@ function renderNow() {
   replace(
     $("#view"),
     heading(
-      "Tudo começa por aqui.",
+      "Agora",
       h.description,
       can("save") &&
         button("Salvar mundo", () => operation("save"), "button", "check"),
@@ -534,11 +533,11 @@ function renderNow() {
         peek,
         resources,
         section(
-          "Agora em Oak",
+          "Jogadores conectados",
           players.length
             ? el("div", "list", ...players.map(playerRow))
             : empty(
-                "O mundo está tranquilo",
+                "Ninguém conectado",
                 "Os jogadores aparecerão aqui quando entrarem.",
               ),
         ),
@@ -678,10 +677,7 @@ async function renderPlayers() {
   draw();
   replace(
     $("#view"),
-    heading(
-      "Cada jogador, uma história.",
-      "Presença, localização e ações administrativas.",
-    ),
+    heading("Jogadores"),
     search,
     list,
     section(
@@ -709,7 +705,9 @@ async function renderWorld() {
   const root = $("#world-view");
   if (!worldFrame) {
     worldFrame = el("iframe", "world-frame");
-    worldFrame.title = state.session.demo ? "Atlas isométrico de demonstração" : "Mapa tridimensional de Oak";
+    worldFrame.title = state.session.demo
+      ? "Atlas isométrico de demonstração"
+      : "Mapa tridimensional de Oak";
     worldFrame.referrerPolicy = "same-origin";
     worldFrame.src = state.session.demo
       ? "/admin/assets/demo-map.html"
@@ -721,8 +719,8 @@ async function renderWorld() {
     replace(
       root,
       heading(
-        "Um mundo vivo.",
-        "Explore o mapa, encontre jogadores e marque lugares.",
+        "Mundo",
+        null,
         can("map_refresh") &&
           button(
             "Atualizar terreno",
@@ -802,7 +800,11 @@ function updateWorld() {
     el(
       "span",
       "",
-      state.session.demo ? "Atlas ilustrativo" : s.map?.running ? "Renderizando terreno…" : "BlueMap · visão 3D",
+      state.session.demo
+        ? "Atlas ilustrativo"
+        : s.map?.running
+          ? "Renderizando terreno…"
+          : "BlueMap · visão 3D",
     ),
   );
   worldFrame.contentWindow.postMessage(
@@ -931,17 +933,17 @@ function placeDetail(p) {
   );
 }
 function newBackup() {
-  const name = input("Antes da próxima aventura");
+  const name = input("Backup manual");
   name.maxLength = 80;
   drawer(
-    "PROTEGER PROGRESSO",
-    el("h2", "", "Um ponto para voltar."),
+    "BACKUP",
+    el("h2", "", "Criar backup"),
     el(
       "p",
       "",
       "O mundo será salvo, copiado e verificado. O arquivo ficará na Oracle.",
     ),
-    form("Criar backup", [field("Nome do ponto", name)], "Criar backup", () =>
+    form(null, [field("Nome do ponto", name)], "Criar backup", () =>
       operation("backup", { name: name.value }),
     ),
   );
@@ -952,8 +954,8 @@ async function renderBackups() {
   replace(
     $("#view"),
     heading(
-      "O progresso merece cuidado.",
-      "Pontos de recuperação, com evidências de verificação.",
+      "Backups",
+      null,
       can("backup") &&
         button("Criar backup", newBackup, "button primary", "plus"),
     ),
@@ -981,8 +983,7 @@ async function renderBackups() {
       el(
         "aside",
         "panel",
-        el("span", "eyebrow", "NA ORACLE"),
-        el("h2", "", "Proteção que você pode conferir."),
+        el("h2", "", "Armazenamento local"),
         el(
           "p",
           "muted",
@@ -990,7 +991,7 @@ async function renderBackups() {
         ),
         facts({
           "Reserva de disco": "20 GiB",
-          "Cópia externa": "Fora do escopo atual",
+          "Cópia externa": "Não configurada",
           "Rotina existente": "Diária, às 05:00",
         }),
         el(
@@ -1052,10 +1053,7 @@ async function renderOperations() {
   if (state.page !== "operations") return;
   replace(
     $("#view"),
-    heading(
-      "Tudo tem um caminho.",
-      "Acompanhe ações, resultados e rotinas sem perder o contexto.",
-    ),
+    heading("Operações"),
     el(
       "div",
       "list",
@@ -1243,10 +1241,7 @@ async function renderServer() {
   );
   replace(
     $("#view"),
-    heading(
-      "Cada detalhe, no seu lugar.",
-      "Configuração controlada, revisão explícita e resultado verificável.",
-    ),
+    heading("Servidor"),
     el(
       "div",
       "page-actions",
@@ -1315,8 +1310,8 @@ async function renderAccess() {
   replace(
     $("#view"),
     heading(
-      "Seu acesso. Sua confiança.",
-      "Chaves de acesso protegidas pelo seu dispositivo.",
+      "Acesso",
+      null,
       button("Adicionar chave", () => passkey(true), "button primary", "key"),
     ),
     section(
@@ -1566,20 +1561,31 @@ function searchResults() {
         run: () => (k === "backup" ? newBackup() : operation(k)),
       })),
   ];
-  $("#search-results").replaceChildren(
-    ...entries
-      .filter((e) => e.label.toLocaleLowerCase("pt-BR").includes(query))
-      .map((e) =>
-        button(
-          el("span", "", e.label, el("small", "", e.group)),
-          async () => {
-            $("#search-dialog").close();
-            await e.run();
-          },
-          "search-result",
-        ),
-      ),
+  const matches = entries.filter((e) =>
+    e.label.toLocaleLowerCase("pt-BR").includes(query),
   );
+  $("#search-results").replaceChildren(
+    ...matches.map((e) =>
+      button(
+        el(
+          "span",
+          "search-result-content",
+          el("span", "search-result-label", e.label),
+          el("small", "", e.group),
+        ),
+        async () => {
+          $("#search-dialog").close();
+          await e.run();
+        },
+        "search-result",
+      ),
+    ),
+  );
+  if (!matches.length) {
+    const message = el("p", "search-empty", "Nenhum resultado");
+    message.setAttribute("role", "status");
+    $("#search-results").append(message);
+  }
 }
 function openSearch() {
   searchResults();

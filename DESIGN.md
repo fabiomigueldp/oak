@@ -18,3 +18,18 @@ execution. The persistent operation bar shows work across navigation. Typography
 and generous spacing establish hierarchy; evidence labels distinguish current,
 stale, simulated and historically sampled data. Do not substitute illustrative
 metrics for unavailable live measurements.
+
+Scrollbars use thin native tracks, transparent gutters and muted forest thumbs
+across the dashboard, chat and map. Keep scrolling available where content needs
+it; reduce excess spacing on short screens before introducing another scroll area.
+Search has one scrolling results region; modal overlays contain their scrolling.
+Selects retain native semantics and keyboard interaction. Browsers supporting
+`appearance: base-select` also receive themed pickers, option states and chevrons;
+other browsers retain their native picker with the document color scheme.
+Respect forced colors, reduced motion and 44px touch options.
+
+Page titles name the workspace directly. Omit repeated brand eyebrows, generic
+taglines and descriptions that merely restate the available controls. Keep copy
+that explains consequences, verification evidence, freshness or recovery. Search
+results separate the name from the category in aligned columns. Technical job
+payloads are available through a disclosure instead of dominating the result.
