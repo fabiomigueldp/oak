@@ -83,7 +83,9 @@ class RepositoryTests(unittest.TestCase):
         return self.runtime.backup(str(uuid.uuid4()), 'Synthetic', Mock())['backup']
 
     def test_incremental_roundtrip_fingerprint_and_source_preservation(self):
+        before = self.repo.measure()['bytes']
         first = self.capture()
+        self.assertEqual(self.repo.point(first)['added_bytes'], self.repo.measure()['bytes'] - before)
         second = self.capture()
         self.assertEqual(len(self.repo.points()), 2)
         self.assertLess(self.repo.point(second)['added_bytes'], self.repo.point(first)['added_bytes'])
@@ -111,9 +113,9 @@ class RepositoryTests(unittest.TestCase):
         policy = self.repo.policy()
         self.repo.update_policy({'revision': policy['revision'], 'policy': DEFAULT_POLICY})
         with self.assertRaises(ValueError): self.repo.update_policy({'revision': policy['revision'], 'policy': DEFAULT_POLICY})
-        point = self.repo.point(identifier)
-        point['manifest']['environment'] = 'changed'
-        self.repo.write(self.repo.catalog/(identifier+'.json'), point)
+        key = self.root/'crossplay/geyser/key.pem'
+        key.parent.mkdir(parents=True)
+        key.write_text('synthetic external key change')
         with self.assertRaises(ValueError): self.runtime.preview('restore_backup', {'backup': identifier, 'fingerprint': identifier})
 
     def test_restore_replaces_only_synthetic_world_and_keeps_safety(self):

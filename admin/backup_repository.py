@@ -128,7 +128,7 @@ class Repository:
         entries = {}
         for root in paths:
             for p in sorted(root.rglob('*')) if root.is_dir() else [root]:
-                if p.is_file() and not p.is_symlink() and (p.suffix in ('.conf', '.service', '.py', '.jar', '.yml', '.yaml') or p == root):
+                if p.is_file() and not p.is_symlink() and (p.suffix in ('.conf', '.service', '.py', '.jar', '.yml', '.yaml', '.pem', '.key') or p == root):
                     if not any(part in ('logs', '__pycache__', 'cache') for part in p.parts):
                         entries[str(p)] = sha256(p)
         digest = hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()
@@ -194,7 +194,8 @@ class Repository:
                 if size > 20 * GIB:
                     raise RuntimeError('Source exceeds the 20 GiB capture limit.')
                 r.require_space(size * 2.1)
-                if self.measure()['bytes'] >= self.policy()['budget_gib'] * GIB:
+                initial_repository_bytes = self.measure()['bytes']
+                if initial_repository_bytes >= self.policy()['budget_gib'] * GIB:
                     raise RuntimeError('O repositório atingiu o orçamento. Revise a retenção ou libere espaço.')
                 live = r.active()
                 progress('Salvando mundo', 'Preparing a stable, separate copy.')
@@ -243,7 +244,10 @@ class Repository:
                 self.write(self.catalog / (identifier + '.json'), point)
                 # Retention never runs inside a restore's safety capture: its selected
                 # source must remain available until replacement finishes.
-                self.measure(structure_checked=time.time())
+                measured = self.measure(structure_checked=time.time())
+                # restic 0.16 summary data_added is logical, not stored bytes.
+                point['added_bytes'] = max(0, measured['bytes'] - initial_repository_bytes)
+                self.write(self.catalog / (identifier + '.json'), point)
                 return {'backup': identifier, 'sha256': identifier, 'bytes': point['bytes'], 'added_bytes': point['added_bytes'],
                         'duration': point['duration'], 'integrity': True, 'replicated': False}
         finally:
