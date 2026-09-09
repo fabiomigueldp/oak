@@ -267,7 +267,10 @@ class Store:
         points = status['backups']
         health = status.get('health', {})
         due = status.get('next_run') or 0
-        boot = max((p.get('restoration', {}).get('at', 0) for p in points if p.get('restoration', {}).get('playable_boot_tested')), default=0)
+        profile = points[0].get('manifest', {}) if points else {}
+        boot = max((p.get('restoration', {}).get('at', 0) for p in points
+                    if p.get('compatible') and p.get('restoration', {}).get('playable_boot_tested')
+                    and all(p.get('manifest', {}).get(k) == profile.get(k) for k in ('version', 'mods'))), default=0)
         candidates = []
         if status.get('bytes', 0) >= policy['budget_gib'] * 1024**3 and health.get('compacted', 0) + 86400 <= now:
             candidates.append(('backup_compact', {'revision': policy['revision']}, 'Retenção automática'))

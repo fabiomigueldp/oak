@@ -72,6 +72,20 @@ class PolicyTests(unittest.TestCase):
             store.tick_backups()
             self.assertEqual(len(store.jobs()), 1)
 
+    def test_new_runtime_does_not_inherit_old_boot_assurance(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = Store(Path(folder)/'test.sqlite3')
+            now = time.time()
+            current = {'id': 'a'*64, 'compatible': True, 'integrity': True,
+                       'manifest': {'includes_runtime': True, 'version': 'new'}, 'restoration': {}}
+            old = {**current, 'id': 'b'*64, 'manifest': {'version': 'old'},
+                   'restoration': {'at': now, 'playable_boot_tested': True}}
+            store.set('backup_status', {'ready': True, 'sampled_at': now,
+                'policy': {**DEFAULT_POLICY, 'enabled': True}, 'next_run': now + 10800,
+                'health': {'data_checked': now, 'compacted': now}, 'backups': [current, old]})
+            store.tick_backups()
+            self.assertEqual(store.jobs()[0]['params']['backup'], current['id'])
+
 
 @unittest.skipUnless(shutil.which('restic'), 'Real restic executable required')
 class RepositoryTests(unittest.TestCase):
