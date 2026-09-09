@@ -28,6 +28,7 @@ button, a, input, textarea, summary { -webkit-tap-highlight-color: transparent; 
 .site-header { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 h1, h2 { margin: 0; }
 .brand { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--accent); font-size: 30px; font-weight: 650; letter-spacing: -1.5px; }
+.brand img { flex: none; border-radius: 4px; }
 .header-actions { display: flex; align-items: center; gap: 24px; }
 #state { color: var(--muted); font-size: 12px; }
 #state[data-state="online"] { color: var(--accent); }

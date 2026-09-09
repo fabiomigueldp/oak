@@ -1,5 +1,12 @@
 # Oak design
 
+Use the oak artwork in `public/brand/` for server, browser and application identity.
+Use explicit image dimensions: the 64px export for compact app marks, 32px for
+browser tabs, 180px for Apple touch icons and 512px for square sharing previews.
+The source is `assets/oak-source.png`. Keep visible branding to `Oak`; server
+descriptions contain only the Minecraft version. Avoid slogans, decorative
+microcopy and redundant headings. Preserve functional labels and accessibility.
+
 Oak is a quiet companion for players checking the world and chatting from a desktop beside the game or from a phone. Preserve the existing dark forest palette to keep the map comfortable in this setting. Use restrained color, with pale green for the brand, primary send action, and live state.
 
 Tokens in public/style.css are authoritative: background oklch(21% .014 150), panel oklch(24% .014 150), text oklch(93% .014 95), muted oklch(72% .017 125), accent oklch(82% .067 115), and line oklch(34% .015 140).
