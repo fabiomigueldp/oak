@@ -36,7 +36,10 @@ def main():
     Path('/etc/tmpfiles.d/oak-telemetry.conf').write_text('d /run/oak-telemetry 2750 oak oak-control -\n')
     dropin = Path('/etc/systemd/system/oak.service.d/95-telemetry.conf')
     # The existing stop helper is root-only; do not broaden its file permissions.
-    dropin.write_text('[Service]\nReadWritePaths=/run/oak-telemetry\nExecStop=\nExecStop=+/usr/local/sbin/oak-admin stop\n')
+    dropin.write_text('[Service]\nReadWritePaths=/run/oak-telemetry\n')
+    # Sort after crossplay.conf, which otherwise appends an unprivileged stop.
+    Path('/etc/systemd/system/oak.service.d/zz-oak-stop.conf').write_text(
+        '[Service]\nExecStop=\nExecStop=+/usr/local/sbin/oak-admin stop\n')
     release = Path('/opt/oak-telemetry/releases') / args.commit
     release.mkdir(parents=True, exist_ok=False)
     with tempfile.TemporaryDirectory(prefix='oak-telemetry-') as output:
@@ -54,7 +57,7 @@ def main():
     # Runtime Minecraft textures stay outside Git and the public website.
     textures = Path('/var/lib/oak-control/avatar-assets')
     control_uid = pwd.getpwnam('oak-control').pw_uid
-    with zipfile.ZipFile('/srv/oak/map-test/data/minecraft-client-26.3-pre-2.jar') as jar:
+    with zipfile.ZipFile('/srv/oak/map-test/data/minecraft-client-26.3-pre-3.jar') as jar:
         prefix = 'assets/minecraft/textures/'
         for name in jar.namelist():
             relative = name.removeprefix(prefix)

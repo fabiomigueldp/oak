@@ -1,6 +1,7 @@
-"""Compile against the installed, unobfuscated 26.3-pre-2 server; never start it."""
+"""Compile against the installed, unobfuscated 26.3-pre-3 server; never start it."""
 import argparse
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 import zipfile
@@ -16,8 +17,21 @@ server = args.server.resolve()
 if output == server or server in output.parents:
     raise SystemExit('Build output must be outside the Minecraft directory.')
 output.mkdir(parents=True, exist_ok=True)
-jars = sorted((server / 'libraries').rglob('*.jar')) + sorted((server / '.fabric/processedMods').glob('*.jar'))
-jars.append(server / 'versions/26.3-pre-2/server-26.3-pre-2.jar')
+jars = sorted((server / 'libraries').rglob('*.jar'))
+# Fabric retains processed modules from previous releases. Compile only against
+# modules declared by the currently installed API, never that stale cache.
+apis = list((server / 'mods').glob('fabric-api*.jar'))
+if len(apis) != 1:
+    raise SystemExit('Exactly one installed Fabric API jar is required.')
+api_output = output / 'fabric-api'
+api_output.mkdir(exist_ok=True)
+with zipfile.ZipFile(apis[0]) as api:
+    for entry in json.loads(api.read('fabric.mod.json'))['jars']:
+        name = entry['file']
+        target = api_output / Path(name).name
+        target.write_bytes(api.read(name))
+        jars.append(target)
+jars.append(server / 'versions/26.3-pre-3/server-26.3-pre-3.jar')
 classes = output / 'classes'
 classes.mkdir(exist_ok=True)
 subprocess.run([str(args.jdk / 'bin/javac'), '--release', '25', '-cp', ':'.join(map(str, jars)), '-d', str(classes), *map(str, sorted((root / 'src').rglob('*.java')))], check=True)
