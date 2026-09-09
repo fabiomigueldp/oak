@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "oak_aviary",
+  "version": "0.1.0",
+  "name": "Oak Aviary",
+  "description": "Server-side condor travel for unmodified Java clients.",
+  "environment": "server",
+  "entrypoints": { "main": ["me.oak.aviary.Aviary"] },
+  "mixins": ["oak-aviary.mixins.json"],
+  "depends": {"fabricloader": ">=0.19.5", "minecraft": "26.3-pre.3", "java": ">=25", "fabric-api": "*"}
+}
