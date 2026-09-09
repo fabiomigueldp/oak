@@ -6,7 +6,8 @@
     "DisplayAccess",
     "CommonListener",
     "GameListener",
-    "TransientEntity"
+    "TransientEntity",
+    "MannequinAccess"
   ],
   "injectors": {
     "defaultRequire": 1

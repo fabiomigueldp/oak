@@ -32,7 +32,7 @@ public final class BirdRig {
                 ItemStack item=new ItemStack(Items.PAPER);
                 item.set(DataComponents.ITEM_MODEL,Identifier.parse("oak_aviary:"+entry.getKey()));
                 entity.getSlot(0).set(item);
-                var access=(DisplayAccess)entity;access.aviary$duration(3);access.aviary$positionDuration(3);
+                var access=(DisplayAccess)entity;access.aviary$duration(2);access.aviary$positionDuration(2);
                 if(!level.addFreshEntity(entity))throw new IllegalStateException("Could not create bird model");
                 parts.add(new Part(entry.getKey(),pivot,entity));
             }
@@ -40,12 +40,15 @@ public final class BirdRig {
         } catch(Exception e){close();throw new IllegalStateException("Bird rig unavailable",e);}
     }
     public void pose(Vec3 origin,float yaw,double wing,double bank) {
+        pose(origin,yaw,wing,wing*.18,bank);
+    }
+    public void pose(Vec3 origin,float yaw,double wing,double tip,double bank) {
         Quaternionf direction=new Quaternionf().rotationY((float)Math.toRadians(180-yaw));
         for(Part part:parts) {
             Quaternionf joint=new Quaternionf();
             int sign=part.name().startsWith("left")?-1:1;
             if(part.name().contains("wing"))joint.rotationZ((float)(sign*wing));
-            if(part.name().contains("tip"))joint.rotationZ((float)(sign*wing*1.18));
+            if(part.name().contains("tip"))joint.rotationZ((float)(sign*(wing+tip)));
             if(part.name().equals("tail"))joint.rotationX((float)(-.05+wing*.10));
             Vector3f local=new Vector3f((float)part.pivot().x,(float)part.pivot().y,(float)part.pivot().z);
             if(part.name().contains("tip")) {
@@ -56,10 +59,21 @@ public final class BirdRig {
             Quaternionf body=new Quaternionf(direction).rotateZ((float)bank);
             Vector3f offset=body.transform(local);
             Quaternionf rotation=new Quaternionf(body).mul(joint);
-            var transform=new Transformation(offset,rotation,new Vector3f(4),new Quaternionf());
+            // The native ItemDisplayRenderer appends Y(pi) before rendering the
+            // item mesh. Cancel it locally; pivot translations must stay intact.
+            var transform=new Transformation(offset,rotation,new Vector3f(4),new Quaternionf().rotationY((float)Math.PI));
             var access=(DisplayAccess)part.entity();access.aviary$transform(transform);access.aviary$delay(0);
             part.entity().setPos(origin.x,origin.y,origin.z);
         }
+    }
+    void animate(Vec3 origin,float yaw,int tick,String phase) {
+        double cycle=tick*.18;
+        boolean resting=phase.equals("board");
+        double power=phase.equals("cruise")?Math.pow(Math.max(0,Math.sin(tick*Math.PI/100)),6):1;
+        double amplitude=resting?.025:.09+.38*power;
+        double wing=.06+Math.sin(cycle)*amplitude;
+        double tip=.06+Math.sin(cycle-.65)*amplitude*.45;
+        pose(origin,yaw,wing,tip,resting?0:Math.sin(tick*.035)*.025);
     }
     public void close(){for(Part part:parts)part.entity().discard();parts.clear();}
 }

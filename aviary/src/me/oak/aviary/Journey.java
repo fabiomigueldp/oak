@@ -26,6 +26,7 @@ final class Journey {
     private CompletableFuture<Void> journal;
     private BirdRig bird;
     private ArmorStand carrier,camera;
+    private PassengerVisual passenger;
     private int age,phaseTick,fade;
     private String phase="prepare";
     private boolean transferred,closed,shortcut;
@@ -84,6 +85,16 @@ final class Journey {
         entity.addTag("oak_aviary_temporary");entity.setInvisible(true);entity.setNoGravity(true);entity.setSilent(true);entity.setNoBasePlate(true);entity.setPermanentlyInvulnerable(true);entity.setRequiresPrecisePosition(true);entity.setPos(pos);
         if(!level.addFreshEntity(entity))throw new IllegalStateException("Could not create flight anchor");return entity;
     }
+    private void attachCamera() {
+        var distance=java.util.Objects.requireNonNull(camera.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.CAMERA_DISTANCE));
+        // Front-view F5 reverses the view and moves backwards along it. Place
+        // that camera beyond the subject, so both third-person views face it.
+        distance.setBaseValue(14);
+        player.connection.send(new net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket(camera.getId(),List.of(distance)));
+        passenger=new PassengerVisual(player,carrier,yaw);
+        player.connection.send(new net.minecraft.network.protocol.game.ClientboundRotateHeadPacket(camera,(byte)(camera.getYHeadRot()*256/360)));
+        player.connection.send(new ClientboundSetCameraPacket(camera));
+    }
     private void next(String value){phase=value;phaseTick=0;}
     private Vec3 route(double t) {
         Vec3 a=position(origin).add(0,18,0),b=position(destination).add(0,18,0);
@@ -119,7 +130,7 @@ final class Journey {
             next("call");
         } else if(phase.equals("call")) {
             if(player.position().distanceTo(position(origin))>6){abort("Flight cancelled. Stay at the aviport to board.");return;}
-            bird.pose(position(origin).add(0,12*(1-FlightPath.ease(phaseTick/50.0)),0),yaw,Math.sin(age*.16)*.28,0);
+            if(age%2==0)bird.animate(position(origin).add(0,12*(1-FlightPath.ease(phaseTick/50.0)),0),yaw,age,"call");
             if(phaseTick<50&&!skip)return;
             current=position(origin);
             player.teleportTo(level,current.x,current.y,current.z,Set.of(),yaw,0,true);
@@ -127,7 +138,7 @@ final class Journey {
             next("board");
         } else if(phase.equals("board")) {
             move(position(origin));
-            if(phaseTick==12)player.connection.send(new ClientboundSetCameraPacket(camera));
+            if(phaseTick==12)attachCamera();
             if(phaseTick>=40)next("depart");
         } else if(phase.equals("depart")) {
             move(position(origin).add(0,18*FlightPath.ease(phaseTick/80.0),0));
@@ -144,6 +155,7 @@ final class Journey {
             if(!journal.isDone())return;journal.join();
             if(phaseTick%5==0&&!clearPort(level,destination))throw new IllegalStateException("Arrival area changed");
             transferred=true;player.connection.send(new ClientboundSetCameraPacket(player));
+            if(passenger!=null){passenger.close();passenger=null;}
             player.stopRiding();carrier.discard();camera.discard();bird.close();
             current=position(destination).add(0,18,0);
             player.teleportTo(level,current.x,current.y,current.z,Set.of(),yaw,0,true);
@@ -151,7 +163,7 @@ final class Journey {
             if(!player.startRiding(carrier,true,true))throw new IllegalStateException("Could not resume flight");next("arrival-load");
         } else if(phase.equals("arrival-load")) {
             move(current);
-            if(phaseTick==15)player.connection.send(new ClientboundSetCameraPacket(camera));
+            if(phaseTick==15)attachCamera();
             boolean pending=false;
             var center=chunk(current);
             for(int x=-1;x<=1;x++)for(int z=-1;z<=1;z++)pending|=player.connection.chunkSender.isPending(new ChunkPos(center.x()+x,center.z()+z).pack());
@@ -170,11 +182,14 @@ final class Journey {
     private void move(Vec3 target) {
         current=target;carrier.setPos(target);carrier.setYRot(yaw);carrier.positionRider(player);
         if(!player.isPassenger())player.startRiding(carrier,true,true);
-        double angle=Math.toRadians(yaw+135),distance=phase.equals("depart")?8:7;
-        Vec3 eye=target.add(Math.sin(angle)*distance,3.4,Math.cos(angle)*distance);
-        Vec3 aim=target.add(0,1.4,0).subtract(eye);
+        double angle=Math.toRadians(yaw+135),distance=6.5;
+        // A shallow pitch keeps the mirrored F5 camera above the landing deck.
+        Vec3 eye=target.add(Math.sin(angle)*distance,2.6,Math.cos(angle)*distance);
+        Vec3 aim=target.add(0,2.0,0).subtract(eye);
         camera.setPos(eye.subtract(0,camera.getEyeHeight(),0));camera.setYRot((float)(Math.toDegrees(Math.atan2(aim.z,aim.x))-90));camera.setXRot((float)-Math.toDegrees(Math.atan2(aim.y,Math.hypot(aim.x,aim.z))));
-        if(age%3==0)bird.pose(target,yaw,Math.sin(age*.16)*.28,Math.sin(age*.035)*.025);
+        camera.setYHeadRot(camera.getYRot());
+        if(age%2==0)bird.animate(target,yaw,age,phase);
+        if(passenger!=null&&age%10==0)passenger.updateEquipment();
         if(age%40==0&&!phase.equals("board"))level.playSound(null,carrier.blockPosition(),net.minecraft.sounds.SoundEvents.ENDER_DRAGON_FLAP,net.minecraft.sounds.SoundSource.NEUTRAL,.18f,1.6f);
     }
     private void setFade(int value){setFade(value,false);}
@@ -186,6 +201,7 @@ final class Journey {
     void abort(String message){if(!closed)finish(transferred?destination:origin,message);}
     private void finish(AviaryStore.Port port,String message) {
         closed=true;Aviary.restoreCamera(player);player.stopRiding();
+        if(passenger!=null){passenger.close();passenger=null;}
         // The origin remains ticketed throughout travel, including recovery writes.
         Vec3 safe=safeLanding(level,port.x(),port.y(),port.z());
         if(safe==null)safe=safeLanding(level,origin.x(),origin.y(),origin.z());

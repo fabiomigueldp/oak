@@ -34,9 +34,12 @@ automatically. Only overworld routes are supported in this release.
 ## Implementation
 
 The bird has eight native item displays and 94 cuboids. The real player rides an
-invisible carrier; a separate invisible anchor supplies camera position. No
-player clone, inventory replacement, spectator switch or ability change is used.
-Model poses update every three server ticks with native client interpolation.
+invisible carrier; a separate invisible anchor supplies camera position. Because
+the vanilla client hides its local player with an external camera, an owner-only
+native mannequin renders the passenger's skin and equipment. It is never added to
+the server world, player list or saved data. Observers see the real player. No
+inventory replacement, spectator switch or player-ability change is used.
+Model poses update every two server ticks with native client interpolation.
 The simulation does not run mob AI or scan the whole world.
 
 Routes above 500 horizontal blocks use a fade and relocation near the destination.
@@ -102,6 +105,16 @@ interruption, inventory preservation, camera/effect packets, and temporary-entit
 cleanup. Its fake connection does not render frames. Build with `--smoke` and use
 `tests/run_smoke.py` only inside a fresh `unshare --net` namespace. The test artifact
 refuses startup without its isolated-test property and is rejected by the installer.
+
+Version 0.1.1 corrects the implicit Y(180 degrees) rotation in the native item
+renderer, which previously folded independently positioned parts into the body.
+The regression runs 712 non-tail cube vertices through the display metadata and
+client render basis. Camera head yaw is synchronized explicitly; the camera
+anchor's distance attribute also keeps the subject in front of the mirrored F5
+view. First person, rear third person and front third person have different
+framing because the vanilla client's F5 setting remains under player control.
+The owner-only mannequin uses the native skin/equipment capabilities documented
+in [Minecraft 1.21.9](https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-9).
 
 Actual vanilla-client camera framing, F5 behavior, input, GPU effects, skin/armor
 clearance, chunk delivery under latency, and Bedrock coexistence still need an
