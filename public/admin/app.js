@@ -1,4 +1,4 @@
-import { renderBackups as renderRecovery, backupUpdated } from "./backups.js?v=2";
+import { renderBackups as renderRecovery, backupUpdated } from "./backups.js?v=3";
 import { renderEnvironment } from "./environment.js?v=2";
 import {
   PAGES,
@@ -1007,7 +1007,7 @@ function newBackup() {
   );
 }
 function backupContext() {
-  return { el, button, field, input, select, heading, api, operation, state, can, showJob, toast };
+  return { el, button, field, input, select, heading, api, operation, state, can, showJob, toast, drawer };
 }
 async function renderBackups() { return renderRecovery(backupContext()); }
 async function renderOperations() {
