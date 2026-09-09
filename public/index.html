@@ -19,7 +19,7 @@
   <meta property="og:image:height" content="512">
   <meta property="og:image:alt" content="Carvalho de Oak">
   <meta name="twitter:card" content="summary">
-  <link rel="stylesheet" href="/style.css?v=6">
+  <link rel="stylesheet" href="/style.css?v=7">
   <script src="/app.js?v=3" defer></script>
 </head>
 <body>
@@ -58,10 +58,10 @@
           <div id="chat" role="log" aria-label="Conversa do servidor" aria-live="polite" tabindex="0"><p class="empty">Carregando…</p></div>
           <form id="chat-form">
             <label for="name">Seu nome</label>
-            <input id="name" name="name" placeholder="Como você aparece no jogo" minlength="3" maxlength="16" pattern="[A-Za-z0-9_]{3,16}" title="Use de 3 a 16 letras, números ou sublinhados." autocomplete="nickname" spellcheck="false" required>
+            <input id="name" name="name" placeholder="Como você aparece no jogo" autocomplete="nickname" spellcheck="false" required>
             <div class="compose">
               <label class="sr-only" for="message">Mensagem para o jogo</label>
-              <textarea id="message" name="message" placeholder="Mensagem para o jogo…" rows="2" maxlength="240" required></textarea>
+              <textarea id="message" name="message" placeholder="Mensagem para o jogo…" title="Enter envia; Shift+Enter insere uma nova linha." rows="2" required></textarea>
               <button id="send" type="submit" aria-label="Enviar mensagem"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button>
             </div>
             <div class="form-bottom"><span>No jogo, você aparece como <b>[Web]</b></span><span id="form-status" role="status"></span></div>

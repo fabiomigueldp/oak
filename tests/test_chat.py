@@ -1,4 +1,5 @@
 import importlib.util,pathlib,tempfile,threading,http.client,json
+from unittest.mock import patch,MagicMock
 spec=importlib.util.spec_from_file_location('oakchat',pathlib.Path(__file__).resolve().parents[1]/'server/chat-server.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 for name in ('JavaPlayer', '.Bedrock_Player', '.abcdefghijklmnop'):
  for prefix in ('', '[Not Secure] '):
@@ -13,10 +14,35 @@ with tempfile.TemporaryDirectory() as tmp:
  def request(data,origin=m.ORIGIN):
   c=http.client.HTTPConnection('127.0.0.1',server.server_port,timeout=3);c.request('POST','/api/chat',json.dumps(data),{'Content-Type':'application/json','Origin':origin});r=c.getresponse();status=r.status;r.read();c.close();return status
  assert request({'name':'Teste','message':'ok'},'https://example.org')==403
- assert request({'name':'Teste','message':'oi\nop Teste'})==400
+ assert request({'name':'Teste','message':'   '})==400
+ assert request({'name':'Teste','message':'x'*10001})==400
+ assert request({'name':'x'*65,'message':'ok'})==400
+ assert request({'name':'Teste','message':'\ud800'})==400
+ assert request([])==400
+ assert request({'name':'Teste','message':'x'*m.MAX_BODY})==413
  assert request({'name':'Teste','message':'Texto "literal" /op @a <script>'})==200
  assert delivered==[('Teste','Texto "literal" /op @a <script>')]
- assert request({'name':'Teste','message':'spam'})==429
+ long_text=('Olá 👨‍👩‍👧‍👦 § <script> "literal" \\ \t\n/op @a '*250)[:10000]
+ assert request({'name':'.João da Silva 🌳','message':long_text})==200
+ assert delivered[-1]==('.João da Silva 🌳',long_text.strip())
+ assert request({'name':'A','message':'oi\nop Teste'})==200
+ assert delivered[-1]==('A','oi\nop Teste')
+ for _ in range(57):assert request({'name':'Teste','message':'conversa'})==200
+ assert request({'name':'Teste','message':'flood'})==429
+ with patch.object(m.time,'monotonic',return_value=m.time.monotonic()+61):
+  assert request({'name':'Teste','message':'after window'})==200
  c=http.client.HTTPConnection('127.0.0.1',server.server_port,timeout=3);c.request('GET','/api/events');r=c.getresponse();assert r.status==200;assert r.getheader('Content-Type')=='text/event-stream';assert r.readline()==b'data: {"test":true}\n';c.close()
  server.shutdown()
-print('PASS: origin check, newline rejection, literal payload, rate limit, SSE stream (delivery mocked)')
+for name in ('A','🌳'*64):
+ for message in (long_text,'😀'*10000,'"\\\n\t\0§'*1500):
+  commands=list(m.chat_commands(name,message))
+  assert ''.join(json.loads(c[len('tellraw @a '):])[2]['text'] for c in commands)==message
+  assert all(len(c.encode())+14<=1460 and '\n' not in c and '\0' not in c for c in commands)
+  assert all(json.loads(c[len('tellraw @a '):])[1]['text']==name+': ' for c in commands)
+# Exercise the real delivery loop without opening a socket or reading credentials.
+with patch.object(pathlib.Path,'read_text',return_value='rcon.port=25575\nrcon.password=fake'), patch.object(m.socket,'create_connection',return_value=MagicMock()), patch.object(m,'packet',side_effect=lambda s,i,t,msg:(i,'')) as packet:
+ # The HTTP tests replace send_message; reload its original implementation.
+ real=importlib.util.module_from_spec(spec);spec.loader.exec_module(real)
+ with patch.object(real,'packet',packet):real.send_message('Teste',long_text)
+ assert [call.args[3] for call in packet.call_args_list[1:]]==list(m.chat_commands('Teste',long_text))
+print('PASS: Unicode and multiline chat, long payloads, RCON chunking, origin check, flood ceilings, SSE (delivery mocked)')

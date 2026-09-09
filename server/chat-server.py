@@ -6,6 +6,21 @@ web_messages=collections.deque(maxlen=60)
 rate_lock=threading.Lock();recent={};global_rate=collections.deque()
 streams=threading.BoundedSemaphore(32)
 admin_streams=threading.BoundedSemaphore(128)
+MAX_MESSAGE=10000
+MAX_NAME=64
+MAX_BODY=131072
+
+def chat_commands(name,message):
+ # Budget the JSON-escaped command, including RCON's 14 framing bytes.
+ def command(text):
+  return 'tellraw @a '+json.dumps([{'text':'[Web] ','color':'gray'},{'text':name+': ','color':'green'},{'text':text,'color':'white'}],ensure_ascii=True,separators=(',',':'))
+ budget=1446-len(command(''));chunk=[];size=0
+ for char in message:
+  width=len(json.dumps(char,ensure_ascii=True))-2
+  if size+width>budget:
+   yield command(''.join(chunk));chunk=[];size=0
+  chunk.append(char);size+=width
+ if chunk:yield command(''.join(chunk))
 # Floodgate adds a dot prefix to Bedrock names; keep system/private logs excluded.
 GAME_CHAT=re.compile(r'^\[([\d:]+)\] \[Server thread/INFO\]: (?:\[Not Secure\] )?<([.]?[A-Za-z0-9_]{1,16})> (.*)$')
 def exact(s,n):
@@ -22,16 +37,19 @@ def packet(s,i,t,msg):
  r=exact(s,n);return struct.unpack('<i',r[:4])[0],r[8:-2].decode(errors='replace')
 def send_message(name,message):
  props=dict(l.split('=',1) for l in (ROOT/'server/server.properties').read_text().splitlines() if '=' in l and not l.startswith('#'))
- text=[{'text':'[Web] ','color':'gray'},{'text':name+': ','color':'green'},{'text':message,'color':'white'}]
  with socket.create_connection(('127.0.0.1',int(props['rcon.port'])),timeout=5) as s:
   if packet(s,1,3,props['rcon.password'])[0]!=1:raise ConnectionError('Authentication failed')
-  rid,result=packet(s,2,2,'tellraw @a '+json.dumps(text,ensure_ascii=True))
-  if rid!=2 or 'Incorrect' in result or 'Unknown' in result:raise ConnectionError('Command failed')
+  for command in chat_commands(name,message):
+   rid,result=packet(s,2,2,command)
+   if rid!=2 or result.strip():raise ConnectionError('Command failed')
 def validate(data):
  name=data.get('name','');message=data.get('message','')
- if not isinstance(name,str) or not re.fullmatch(r'[A-Za-z0-9_]{3,16}',name):raise ValueError('Use um nome de 3 a 16 letras, números ou _.')
- if not isinstance(message,str) or not 1<=len(message.strip())<=240 or any(ord(c)<32 or c=='§' for c in message):raise ValueError('Escreva uma mensagem de até 240 caracteres, em uma linha.')
- return name,message.strip()
+ if not isinstance(name,str) or not 1<=len(name.strip())<=MAX_NAME:raise ValueError('Informe um nome de até 64 caracteres.')
+ if not isinstance(message,str) or not 1<=len(message.strip())<=MAX_MESSAGE:raise ValueError('Escreva uma mensagem de até 10.000 caracteres.')
+ # Reject malformed Unicode, but allow all valid text through JSON escaping.
+ try:(name+message).encode('utf-8')
+ except UnicodeEncodeError:raise ValueError('O texto contém um caractere Unicode inválido.')
+ return name.strip(),message.strip()
 def monitor():
  global snapshot,revision
  while True:
@@ -108,18 +126,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
   if self.headers.get('Origin')!=ORIGIN or self.headers.get('Content-Type','').split(';')[0]!='application/json':return self.result(403,{'error':'Origem inválida.'})
   try:
    self.connection.settimeout(5);n=int(self.headers.get('Content-Length','0'))
-   if not 0<n<=2048:raise ValueError('Mensagem inválida.')
+   if not 0<n<=MAX_BODY:return self.result(413,{'error':'O envio excede 128 KB. Reduza o texto.'})
    data=json.loads(self.rfile.read(n))
    if not isinstance(data,dict):raise ValueError('Mensagem inválida.')
    name,message=validate(data)
-  except (ValueError,TypeError):return self.result(400,{'error':'Use um nome de 3–16 letras/números e uma mensagem de até 240 caracteres.'})
+  except (json.JSONDecodeError,UnicodeDecodeError,TypeError):return self.result(400,{'error':'Formato de mensagem inválido.'})
+  except ValueError as error:return self.result(400,{'error':str(error)})
   ip=self.headers.get('X-Forwarded-For',self.client_address[0]).split(',')[0].strip();now=time.monotonic()
   with rate_lock:
    for key in list(recent):
-    if now-recent[key]>60:recent.pop(key)
+    while recent[key] and now-recent[key][0]>=60:recent[key].popleft()
+    if not recent[key]:recent.pop(key)
    while global_rate and now-global_rate[0]>60:global_rate.popleft()
-   if now-recent.get(ip,-100)<10 or len(global_rate)>=15:return self.result(429,{'error':'Aguarde alguns segundos antes de enviar novamente.'})
-   recent[ip]=now;global_rate.append(now)
+   if len(recent.get(ip,()))>=60 or len(global_rate)>=300:return self.result(429,{'error':'Muitas mensagens no último minuto. Aguarde um pouco e tente novamente.'})
+   recent.setdefault(ip,collections.deque()).append(now);global_rate.append(now)
   try:
    if not json.loads((ROOT/'web/status.json').read_text()).get('online'):raise ConnectionError()
    send_message(name,message)
