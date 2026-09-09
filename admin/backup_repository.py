@@ -145,7 +145,7 @@ class Repository:
         environment = self.environment(fresh=False) if points else None
         for p in points:
             p['compatible'] = self.compatible(p, environment)
-            p['restorable'] = p['compatible'] and p.get('integrity', False) and not health.get('check_failed') and p.get('manifest', {}).get('includes_runtime', False)
+            p['restorable'] = p['compatible'] and p.get('integrity', False) and not p.get('verification_failed') and not health.get('check_failed') and p.get('manifest', {}).get('includes_runtime', False)
         newest = points[0]['created'] if points else None
         return {'ready': self.ready, 'engine': 'restic', 'sampled_at': time.time(), 'backups': points,
                 'policy': policy, 'bytes': used, 'logical_bytes': sum(p['bytes'] for p in points),

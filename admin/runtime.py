@@ -465,7 +465,8 @@ class Runtime:
                 point['restoration']['extraction_checked_at'] = result['at']
             else:
                 point['restoration'] = {**result, 'sha256': name}
-            point.pop('verification_failed', None)
+            if boot or not point.get('verification_failed', {}).get('boot'):
+                point.pop('verification_failed', None)
             repository.write(repository.catalog / (name + '.json'), point)
             return point['restoration']
         path = self.backup_path(name)
@@ -558,7 +559,7 @@ class Runtime:
             if SNAPSHOT.fullmatch(params['backup']):
                 repository = Repository(self)
                 point = repository.point(params['backup'])
-                if params['fingerprint'] != point['id'] or not point['integrity']:
+                if params['fingerprint'] != point['id'] or not point['integrity'] or point.get('verification_failed'):
                     raise ValueError('Verifique o ponto antes de restaurar.')
                 if repository.read(repository.health_path, {}).get('check_failed'):
                     raise ValueError('Resolva a falha de verificação do repositório antes de restaurar.')
@@ -629,7 +630,7 @@ class Runtime:
         if SNAPSHOT.fullmatch(params['backup']):
             repository = Repository(self)
             point = repository.point(params['backup'])
-            if params['fingerprint'] != point['id'] or not point['integrity'] or not repository.compatible(point):
+            if params['fingerprint'] != point['id'] or not point['integrity'] or point.get('verification_failed') or not repository.compatible(point):
                 raise ValueError('O ponto ou os componentes externos mudaram. Revise a recuperação.')
             if repository.read(repository.health_path, {}).get('check_failed'):
                 raise ValueError('Resolva a falha de verificação do repositório antes de restaurar.')

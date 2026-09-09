@@ -419,7 +419,7 @@ def create_app(settings=None, agent=None, *, background=True):
         rows = store.rows('SELECT * FROM schedules ORDER BY next_run')
         for row in rows:
             row['params'] = json.loads(row['params'])
-        return {'schedules': rows, 'existing_backup_schedule': '05:00 America/Sao_Paulo (systemd; managed separately)'}
+        return {'schedules': rows, 'backup_policy': API + '/backups'}
 
     @app.post(API + '/schedules', status_code=201)
     async def schedule(request: Request):
