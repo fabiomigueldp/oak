@@ -12,15 +12,24 @@ import unittest
 from unittest.mock import Mock, patch
 from types import SimpleNamespace
 import uuid
+import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from admin.backup_repository import Repository, DEFAULT_POLICY, retention, validate_policy
+from admin.backup_repository import Repository, DEFAULT_POLICY, retention, validate_policy, game_version
 from admin.domain import validate
 from admin.runtime import Runtime
 from admin.store import Store
 
 
 class PolicyTests(unittest.TestCase):
+    def test_version_comes_from_archived_jar_not_cached_directories(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root/'fabric-server-launcher.properties').write_text('serverJar=server.jar\n')
+            with zipfile.ZipFile(root/'server.jar', 'w') as archive:
+                archive.writestr('version.json', json.dumps({'id': '26.3-pre-3'}))
+            self.assertEqual(game_version(root), '26.3-pre-3')
+
     def test_retention_preserves_pins_latest_and_last_boot(self):
         points = [{'id': str(i), 'created': 1789000000 - i * 86400,
                    'pinned': i == 6, 'restoration': {'playable_boot_tested': i == 5}} for i in range(8)]

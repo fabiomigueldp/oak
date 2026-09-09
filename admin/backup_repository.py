@@ -15,12 +15,34 @@ import secrets
 import shutil
 import subprocess
 import time
+import zipfile
 
 GIB = 1024 ** 3
 SNAPSHOT = re.compile(r'[a-f0-9]{64}\Z')
 DEFAULT_POLICY = {'enabled': False, 'interval_minutes': 180, 'keep_recent': 16,
                   'keep_daily': 7, 'keep_weekly': 4, 'budget_gib': 20,
                   'check_days': 7, 'boot_days': 7}
+
+
+def game_version(source):
+    """Read the archived launcher target, not stale cached version directories."""
+    target = source / 'server.jar'
+    launcher = source / 'fabric-server-launcher.properties'
+    if launcher.is_file():
+        values = dict(line.split('=', 1) for line in launcher.read_text().splitlines() if '=' in line and not line.startswith('#'))
+        candidate = source / values.get('serverJar', 'server.jar')
+        if candidate.resolve().is_relative_to(source.resolve()):
+            target = candidate
+    if not target.is_file():
+        return None
+    try:
+        with zipfile.ZipFile(target) as archive:
+            if archive.getinfo('version.json').file_size > 65536:
+                return None
+            version = json.loads(archive.read('version.json')).get('id')
+            return version if isinstance(version, str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,80}', version) else None
+    except (zipfile.BadZipFile, KeyError, ValueError):
+        return None
 
 
 def validate_policy(value):
@@ -219,7 +241,7 @@ class Repository:
                             'mods': {p.name: sha256(p) for p in (stage / 'mods').glob('*.jar')}}
                 launcher = stage / 'fabric-server-launcher.properties'
                 match = re.search(r'versions/([^/\s]+)/', launcher.read_text()) if launcher.exists() else None
-                manifest['version'] = match[1] if match else ', '.join(manifest['versions'])
+                manifest['version'] = game_version(stage) or (match[1] if match else ', '.join(manifest['versions']))
                 manifest.update(name=name, job=job)
                 atomic(stage / 'oak-manifest.json', json.dumps(manifest))
                 progress('Gravando alterações', 'Deduplicating and encrypting the staged copy.')

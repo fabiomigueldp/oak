@@ -461,6 +461,8 @@ class Runtime:
                 repository.write(repository.catalog / (name + '.json'), point)
                 raise
             point = repository.point(name)
+            if result.get('version'):
+                point['manifest']['version'] = result['version']
             if not boot and point.get('restoration', {}).get('playable_boot_tested'):
                 point['restoration']['extraction_checked_at'] = result['at']
             else:
@@ -488,6 +490,8 @@ class Runtime:
             progress('Verificando mundo recuperado', 'Validated extraction and world metadata. No game instance was started.')
             stat = path.stat()
             result = {'at': time.time(), 'level': 'extraction', 'playable_boot_tested': False, 'sha256': sha256(path), 'size': stat.st_size, 'mtime_ns': stat.st_mtime_ns, **summary}
+            from .backup_repository import game_version
+            result['version'] = game_version(stage)
             if boot:
                 memory = Path('/proc/meminfo').read_text()
                 available = re.search(r'^MemAvailable:\s+(\d+)', memory, re.M)
