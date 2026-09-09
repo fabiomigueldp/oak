@@ -114,11 +114,11 @@ class ApiTests(unittest.TestCase):
 
     def test_roles_review_binding_and_idempotency(self):
         uid = self.login_demo()
-        payload = {'kind': 'console', 'params': {'command': 'list'}}
+        payload = {'kind': 'server_control', 'params': {'action': 'stop'}}
         headers = {'Idempotency-Key': 'same-operation-key-123'}
         self.assertEqual(self.post('/jobs', payload, headers=headers).status_code, 400)
         review = self.post('/reviews', payload).json()
-        changed = {**payload, 'params': {'command': 'time query daytime'}, 'review': review['id']}
+        changed = {**payload, 'params': {'action': 'restart'}, 'review': review['id']}
         self.assertEqual(self.post('/jobs', changed, headers=headers).status_code, 409)
         payload['review'] = review['id']
         first = self.post('/jobs', payload, headers=headers)
@@ -129,7 +129,7 @@ class ApiTests(unittest.TestCase):
         with self.store.transaction() as db:
             db.execute("UPDATE users SET role='observer' WHERE id=?", (uid,))
         self.assertEqual(self.post('/reviews', {'kind': 'console', 'params': {'command': 'list'}}).status_code, 403)
-        self.assertEqual(self.client.get(API + '/jobs/' + first.json()['id']).status_code, 404)
+        self.assertEqual(self.client.get(API + '/jobs/' + first.json()['id']).status_code, 200)
 
     def test_valid_sessions_do_not_require_ten_minute_reauthentication(self):
         uid = self.login_demo()
@@ -150,6 +150,43 @@ class ApiTests(unittest.TestCase):
         with self.store.transaction() as db:
             db.execute("UPDATE users SET role='observer' WHERE id=?", (uid,))
         self.assertEqual(self.post('/reviews', payload).status_code, 403)
+
+    def test_active_session_is_renewed_and_can_be_revoked(self):
+        self.login_demo()
+        with self.store.transaction() as db:
+            db.execute('UPDATE sessions SET expires=?', (time.time() + 60,))
+        response = self.client.get(API + '/session')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Max-Age=31536000', response.headers['set-cookie'])
+        self.assertGreater(self.store.one('SELECT expires FROM sessions')['expires'], time.time() + 300 * 86400)
+        sessions = self.client.get(API + '/access').json()['sessions']
+        self.assertTrue(sessions[0]['current'])
+        response = self.client.delete(API + '/access/sessions/' + sessions[0]['token'], headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.get(API + '/overview').status_code, 401)
+
+    def test_role_promotion_and_noop_do_not_destroy_sessions_or_schedules(self):
+        owner = self.login_demo()
+        self.store.invite('Administrator', 'administrator')
+        other = self.store.one("SELECT id FROM users WHERE name='Administrator'")['id']
+        token, _ = self.store.session(other, 3600)
+        with self.store.transaction() as db:
+            db.execute('INSERT INTO schedules VALUES(?,?,?,?,?,?,?,?)', ('routine', 'Save', 'save', '{}', 60, time.time()+3600, 1, other))
+        for role in ('administrator', 'owner'):
+            response = self.client.patch(API + '/access/users/' + other, json={'role': role, 'disabled': False}, headers=self.headers)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertIsNotNone(self.store.current_session(token))
+            self.assertEqual(self.store.one("SELECT enabled FROM schedules WHERE id='routine'")['enabled'], 1)
+        response = self.client.patch(API + '/access/users/' + owner, json={'role': 'administrator', 'disabled': False}, headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.get(API + '/overview').status_code, 200)
+
+    def test_routine_actions_do_not_need_review_but_restore_does(self):
+        self.login_demo()
+        response = self.post('/jobs', {'kind': 'console', 'params': {'command': 'list'}}, headers={'Idempotency-Key': 'routine-console-no-modal'})
+        self.assertEqual(response.status_code, 202)
+        response = self.post('/jobs', {'kind': 'restore_backup', 'params': {'backup': 'a'*64, 'fingerprint': 'a'*64}}, headers={'Idempotency-Key': 'destructive-restore-review'})
+        self.assertEqual(response.status_code, 400)
 
     def test_real_passkey_enrollment_and_login_replay_protection(self):
         invite = self.store.invite('Owner')
@@ -250,6 +287,11 @@ class AgentTests(unittest.TestCase):
                     with self.assertRaises(RuntimeError):
                         client.call('execute', {**data, 'kind': 'backup', 'params': {'name': 'Different'}})
                     self.assertEqual(client.call('receipt', {'job': data['job']})['state'], 'completed')
+                    cancelled = {'job': str(uuid.uuid4()), 'kind': 'save', 'params': {}}
+                    client.call('cancel', {'job': cancelled['job']})
+                    runtime.execute = Mock(side_effect=lambda job, kind, params, progress: progress('Preparing', 'Synthetic cancellation boundary.'))
+                    self.assertEqual(client.call('execute', cancelled), {'cancelled': True})
+                    self.assertEqual(client.call('receipt', {'job': cancelled['job']})['state'], 'cancelled')
                 finally:
                     server.shutdown()
                     thread.join()
@@ -272,6 +314,7 @@ class ProxyTests(unittest.TestCase):
         upstream.getresponse.return_value.getheaders.return_value = [('Content-Type', 'application/json'), ('Set-Cookie', 'opaque=new; HttpOnly'), ('Transfer-Encoding', 'chunked')]
         upstream.getresponse.return_value.read1.side_effect = [b'{"accepted":true}', b'']
         with patch.object(chat.http.client, 'HTTPConnection', return_value=upstream) as connect:
+            handler.client_address = ('127.0.0.1', 50000)
             handler.admin_proxy()
         connect.assert_called_once_with('127.0.0.1', 8092, timeout=150)
         self.assertEqual(upstream.request.call_args.args, ('POST', '/admin/api/jobs'))
@@ -292,6 +335,7 @@ class RuntimeTests(unittest.TestCase):
         (self.root / 'server/server.properties').write_text('difficulty=normal\nmax-players=12\nrcon.password=private-test-value\nunknown-setting=preserve\n')
         self.runtime = Runtime(self.root, free_reserve=0)
         self.runtime.lock = lambda: nullcontext()
+        self.runtime.repository_lock = lambda: nullcontext()
         self.runtime.legacy_backup_lock = lambda: nullcontext()
         self.runtime.active = Mock(return_value=False)
         self.runtime.rcon = Mock()

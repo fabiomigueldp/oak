@@ -28,7 +28,9 @@ class Worker:
             self.lease.close()
             raise RuntimeError('Another worker already owns this state directory.') from exc
         self.store.recover()
-        self.threads = [threading.Thread(target=self.jobs, name='oak-jobs', daemon=True), threading.Thread(target=self.collect, name='oak-collector', daemon=True)]
+        self.threads = [threading.Thread(target=self.jobs, name='oak-jobs', daemon=True),
+                        threading.Thread(target=self.jobs, name='oak-jobs-secondary', daemon=True),
+                        threading.Thread(target=self.collect, name='oak-collector', daemon=True)]
         for thread in self.threads:
             thread.start()
 
@@ -51,7 +53,7 @@ class Worker:
                 try:
                     result = self.agent.call('execute', {'job': job['id'], 'kind': job['kind'], 'params': job['params']},
                                              progress=lambda step, detail: self.store.progress(job['id'], step, detail))
-                    self.store.finish(job['id'], 'completed', result=result)
+                    self.store.finish(job['id'], 'cancelled' if result.get('cancelled') else 'completed', result=result)
                 except (OSError, ConnectionError, TimeoutError):
                     self.store.finish(job['id'], 'interrupted', error='Connection lost. Delivery is uncertain; inspect the host receipt before retrying.')
                 except Exception as exc:
@@ -75,7 +77,7 @@ class Worker:
                     last_extra = time.time()
                 for job in self.store.rows("SELECT id FROM jobs WHERE state='interrupted' ORDER BY created DESC LIMIT 5"):
                     receipt = self.agent.call('receipt', {'job': job['id']})
-                    if receipt and receipt['state'] in ('completed', 'failed'):
+                    if receipt and receipt['state'] in ('completed', 'failed', 'cancelled'):
                         self.store.finish(job['id'], receipt['state'], result=receipt.get('result'), error=receipt.get('error'))
             except Exception:
                 self.store.set('collector_error', {'at': time.time(), 'message': 'A conexão com o agente está indisponível. Os últimos dados foram preservados.'})

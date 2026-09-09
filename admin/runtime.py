@@ -120,12 +120,12 @@ class Rcon:
 
 
 class Runtime:
-    def __init__(self, root=Path('/srv/oak'), *, free_reserve=20 * GIB):
+    def __init__(self, root=Path('/srv/oak'), *, free_reserve=None):
         self.root = Path(root).resolve()
         self.server = self.root / 'server'
         self.control = self.root / 'control'
         self.backups_dir = self.control / 'backups'
-        self.free_reserve = free_reserve
+        self.free_reserve = free_reserve if free_reserve is not None else min(2 * GIB, max(GIB // 2, shutil.disk_usage(root).total // 100))
         self.rcon = Rcon(self.server / 'server.properties', timeout=180)
         self.control.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.backups_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -150,6 +150,13 @@ class Runtime:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as exc:
                 raise RuntimeError('The existing backup service is busy.') from exc
+            yield
+
+    @contextmanager
+    def repository_lock(self):
+        import fcntl
+        with (self.control / 'repository.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
             yield
 
     def service(self, action, name='oak.service'):
@@ -338,11 +345,11 @@ class Runtime:
             time.sleep(.25)
         raise RuntimeError('Source files did not settle within the consistent-copy budget. Retry at a quieter time.')
 
-    def backup(self, job, name, progress):
+    def backup(self, job, name, progress, **options):
         from .backup_repository import Repository
         repository = Repository(self)
         if repository.ready:
-            return repository.capture(job, name, progress)
+            return repository.capture(job, name, progress, **options)
         target = self.backups_dir / ('control-' + job + '.tar.gz')
         if target.exists():
             raise RuntimeError('This operation already created an archive; inspect its receipt.')
@@ -406,6 +413,7 @@ class Runtime:
 
     def inspect_archive(self, path, destination=None):
         total, files, seen, has_level = 0, 0, set(), False
+        available = shutil.disk_usage(self.control).free - self.free_reserve
         allowed = set(INCLUDED) | {'oak-manifest.json'}
         with tarfile.open(path, 'r:*') as archive:
             for member in archive:
@@ -419,7 +427,7 @@ class Runtime:
                 seen.add(member.name)
                 total += member.size
                 files += 1
-                if total > 40 * GIB or files > 1000000:
+                if total > available or files > 1000000:
                     raise ValueError('Archive exceeds the restore budget.')
                 if member.name == 'world/level.dat':
                     has_level = True
@@ -450,6 +458,10 @@ class Runtime:
 
     def verify_backup(self, job, name, progress, boot=False):
         from .backup_repository import Repository, SNAPSHOT
+        if boot and Path('/proc/meminfo').exists():
+            available = re.search(r'^MemAvailable:\s+(\d+)', Path('/proc/meminfo').read_text(), re.M)
+            if not available or int(available[1]) * 1024 < 4 * GIB:
+                return {'deferred': True, 'reason': 'O teste aguarda memória disponível. O backup continua disponível.'}
         if SNAPSHOT.fullmatch(name):
             repository = Repository(self)
             try:
@@ -558,20 +570,20 @@ class Runtime:
             result['changes'] = environment_changes(current, params)
             if params['action'] != 'configure':
                 result['impact'] = ('O clima será alterado temporariamente e depois retomará o perfil ativo.' if params['action'] == 'override' else 'A intervenção temporária será encerrada e o perfil ativo será retomado.')
+        elif kind == 'recover_restore':
+            result.update(impact='O estado anterior será recuperado e o servidor retomará a condição registrada antes da restauração.', steps=['Conferir registro da restauração', 'Reverter substituição', 'Retomar servidor'])
         elif kind == 'restore_backup':
             from .backup_repository import Repository, SNAPSHOT
             if SNAPSHOT.fullmatch(params['backup']):
                 repository = Repository(self)
                 point = repository.point(params['backup'])
-                if params['fingerprint'] != point['id'] or not point['integrity'] or point.get('verification_failed'):
-                    raise ValueError('Verifique o ponto antes de restaurar.')
-                if repository.read(repository.health_path, {}).get('check_failed'):
-                    raise ValueError('Resolva a falha de verificação do repositório antes de restaurar.')
-                if not repository.compatible(point) or not point['manifest']['includes_runtime']:
-                    raise ValueError('Os componentes externos mudaram. Esta recuperação exige revisão pelo operador.')
+                if params['fingerprint'] != point['id'] or not point['manifest']['includes_runtime']:
+                    raise ValueError('O backup selecionado não contém o servidor completo.')
                 result.update(impact='O mundo, mods e configurações serão substituídos. Jogadores serão desconectados.',
                               point_name=point['name'], version=point['manifest'].get('version'),
-                              steps=['Criar ponto de segurança', 'Verificar e extrair a cópia', 'Pausar o jogo e restaurar', 'Validar inicialização e retomar rotinas'])
+                              steps=['Verificar e extrair a cópia', 'Preservar estado atual para reversão', 'Restaurar e validar inicialização'])
+                if not repository.compatible(point):
+                    result['impact'] += ' Serviços externos mudaram desde este backup e serão mantidos na versão atual.'
                 return result
             path = self.backup_path(params['backup'])
             fingerprint = sha256(path)
@@ -592,6 +604,8 @@ class Runtime:
             result.update(impact='A ação será aplicada ao jogador ' + params['player'] + '.', steps=['Verificar a identidade selecionada', 'Aplicar ' + params['action'], 'Registrar a resposta'])
         elif kind in ('server_control', 'maintenance'):
             result.update(impact='Jogadores podem ser desconectados durante esta operação.', steps=['Preservar o progresso', 'Executar a mudança de estado solicitada', 'Verificar o estado observado'])
+            if params.get('force'):
+                result.update(impact='O serviço será controlado sem aguardar resposta do RCON. Progresso ainda não salvo pode ser perdido.', steps=['Controlar serviço', 'Verificar resultado'])
         elif kind == 'backup_delete':
             from .backup_repository import Repository
             point = Repository(self).point(params['backup'])
@@ -634,10 +648,8 @@ class Runtime:
         if SNAPSHOT.fullmatch(params['backup']):
             repository = Repository(self)
             point = repository.point(params['backup'])
-            if params['fingerprint'] != point['id'] or not point['integrity'] or point.get('verification_failed') or not repository.compatible(point):
-                raise ValueError('O ponto ou os componentes externos mudaram. Revise a recuperação.')
-            if repository.read(repository.health_path, {}).get('check_failed'):
-                raise ValueError('Resolva a falha de verificação do repositório antes de restaurar.')
+            if params['fingerprint'] != point['id']:
+                raise ValueError('O backup selecionado mudou. Selecione novamente.')
             with repository.archive(point['id']) as path:
                 return self.restore_archive(job, params, path, progress, snapshot=True)
         path = self.backup_path(params['backup'])
@@ -650,8 +662,8 @@ class Runtime:
         if not summary['includes_runtime']:
             raise ValueError('A complete runtime is required for panel restoration.')
         self.require_space(summary['expanded_bytes'] * 2.2)
-        # Preserve a fresh recovery point before stopping any production component.
-        safety = self.backup(str(uuid.uuid4()), 'Antes da restauração', progress)
+        # The journaled rename below preserves the exact prior state independently
+        # of repository capacity or the health of the current world's files.
         stage = self.control / 'restores' / job
         old = self.control / 'rollback' / job
         stage.mkdir(parents=True, mode=0o700)
@@ -708,7 +720,9 @@ class Runtime:
                     (self.control / 'pending-restart.json').unlink(missing_ok=True)
                 journal_path.unlink()
                 sync_directory(self.control)
-                return {'safety_backup': safety['backup'], 'restored': params['backup'], 'online': was_online, 'rollback_retained': job, 'map_requires_refresh': True}
+                atomic(old / 'completed.json', json.dumps({'at': time.time(), 'job': job}))
+                atomic(stage / 'completed.json', json.dumps({'at': time.time(), 'job': job}))
+                return {'restored': params['backup'], 'online': was_online, 'rollback_retained': job, 'map_requires_refresh': True}
         except BaseException:
             if journal_path.exists():
                 self.recover_restore()
@@ -788,10 +802,22 @@ class Runtime:
         if not re.fullmatch(r'[a-f0-9-]{36}', job):
             raise ValueError('Invalid operation identifier.')
         params = validate(kind, params)
-        with self.lock():
-            if (self.control / 'restore-pending.json').exists():
+        from contextlib import ExitStack
+        from .domain import operation_resources
+        resources = operation_resources(kind)
+        with ExitStack() as locks:
+            if 'world' in resources:
+                locks.enter_context(self.lock())
+            if 'repository' in resources:
+                locks.enter_context(self.repository_lock())
+            if kind == 'recover_restore':
+                progress('Revertendo restauração', 'Recovering the persisted replacement journal.')
+                self.recover_restore()
+                return {'recovered': True}
+            if 'world' in resources and (self.control / 'restore-pending.json').exists():
                 raise RuntimeError('An interrupted restoration needs operator recovery before further world operations.')
-            self.recover_saving()
+            if 'world' in resources:
+                self.recover_saving()
             if kind.startswith('backup_'):
                 from .backup_repository import Repository
                 repository = Repository(self)
@@ -809,7 +835,7 @@ class Runtime:
                 progress('Aplicando ambiente', 'Persisting the reviewed policy through the private control socket.')
                 return environment_call({**params, 'id': job})
             if kind == 'backup':
-                return self.backup(job, params['name'], progress)
+                return self.backup(job, params['name'], progress, automatic=params.get('automatic', False), activity_at=params.get('activity_at', 0))
             if kind == 'verify_backup':
                 return self.verify_backup(job, params['backup'], progress, params['boot'])
             if kind == 'restore_backup':
@@ -850,7 +876,7 @@ class Runtime:
                 return {'backup': safety['backup'], 'restarted': params['restart']}
             if kind == 'server_control':
                 action = params['action']
-                if action in ('stop', 'restart') and self.active():
+                if action in ('stop', 'restart') and self.active() and not params.get('force'):
                     progress('Salvando progresso', 'Flushing the world before changing the service state.')
                     response = self.rcon.command('save-all flush')
                     if 'Saved' not in response:

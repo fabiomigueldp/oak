@@ -1,5 +1,5 @@
-import { renderBackups as renderRecovery, backupUpdated } from "./backups.js?v=1";
-import { renderEnvironment } from "./environment.js";
+import { renderBackups as renderRecovery, backupUpdated } from "./backups.js?v=2";
+import { renderEnvironment } from "./environment.js?v=2";
 import {
   PAGES,
   ROLES,
@@ -26,6 +26,18 @@ const state = {
   dirty: false,
   stream: null,
   overviewReceived: 0,
+};
+state.getDraft = (page) => {
+  try { return JSON.parse(sessionStorage.getItem(`oak-draft:${state.session?.user.id}:${page}`)); }
+  catch { return null; }
+};
+state.saveDraft = (page, value) => {
+  try {
+    const key = `oak-draft:${state.session?.user.id}:${page}`;
+    if (value == null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, JSON.stringify(value));
+    state.draftSaved = true;
+  } catch { state.draftSaved = false; }
 };
 const paths = {
   sun: "M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0",
@@ -120,8 +132,8 @@ async function api(
   if (!response.ok) {
     if (response.status === 401) showLogin();
     throw new Error(
-      result.error ||
-        result.detail ||
+      result.detail ||
+        result.error ||
         "Não foi possível concluir. Tente novamente.",
     );
   }
@@ -315,19 +327,6 @@ async function operation(kind, params = {}, { onQueued } = {}) {
     content.append(
       ...review.changes.map((c) => row(c.label, `${c.before} → ${c.after}`)),
     );
-  if (kind === "restore_backup") {
-    const confirmInput = input();
-    confirm.disabled = true;
-    confirmInput.addEventListener("input", () => {
-      confirm.disabled = confirmInput.value !== "RESTAURAR";
-    });
-    content.append(
-      field(
-        "Digite RESTAURAR para confirmar a substituição do mundo",
-        confirmInput,
-      ),
-    );
-  }
   content.append(
     el(
       "div",
@@ -379,7 +378,7 @@ async function showJob(id, background = false) {
       "div",
       "detail-actions",
       button("Atualizar", () => showJob(id)),
-      job.state === "queued" &&
+      ['queued', 'running'].includes(job.state) &&
         level() >= 2 &&
         button("Cancelar operação", async () => {
           await api("/jobs/" + id + "/cancel", {});
@@ -492,7 +491,7 @@ function renderNow() {
         ? `${points.length} pontos disponíveis na Oracle. Último: ${ago(points[0].created).toLowerCase()}.`
         : "Um ponto de recuperação guarda o mundo e sua configuração.",
     ),
-    points[0] && badge(proof(points[0]).label, proof(points[0]).state),
+    points[0] && badge('Backup disponível'),
     can("backup") &&
       button("Criar backup", () => newBackup(), "button primary", "plus"),
     button(
@@ -1129,6 +1128,7 @@ async function renderServer() {
   const config = await api("/configuration");
   if (state.page !== "server") return;
   const controls = {};
+  const saved = state.getDraft('server');
   const fields = Object.entries(config.fields).map(([key, f]) => {
     let n =
       f.type === "select"
@@ -1159,11 +1159,17 @@ async function renderServer() {
                 : "text",
           );
     if (f.type === "boolean") n.checked = Boolean(config.values[key]);
+    if (saved?.values && key in saved.values) {
+      if (f.type === 'boolean') n.checked = saved.values[key];
+      else n.value = saved.values[key];
+      state.dirty = true;
+    }
     if (f.min != null) n.min = f.min;
     if (f.max != null && f.type === "number") n.max = f.max;
     if (f.type === "text") n.maxLength = f.max;
     n.addEventListener("input", () => {
       state.dirty = true;
+      state.saveDraft('server', { values: Object.fromEntries(Object.entries(controls).map(([k, v]) => [k, v.type === 'checkbox' ? v.checked : v.value])) });
     });
     controls[key] = n;
     return field(f.label, n, f.description);
@@ -1184,7 +1190,7 @@ async function renderServer() {
         "Gravar não reinicia o jogo. Revise e reinicie em uma operação separada para aplicar.",
       ),
     ],
-    "Revisar alterações",
+    "Salvar alterações",
     async () => {
       const changes = {};
       for (const [key, n] of Object.entries(controls)) {
@@ -1199,6 +1205,7 @@ async function renderServer() {
       if (!Object.keys(changes).length)
         return toast("Nenhuma alteração para gravar.");
       await operation("settings_apply", { changes, revision: config.revision });
+      state.saveDraft('server', null);
     },
   );
   replace(
@@ -1222,6 +1229,10 @@ async function renderServer() {
         operation("maintenance", { restart: true }),
       ),
     ),
+    el('details', 'technical-details', el('summary', '', 'Servidor sem resposta'),
+      el('p', 'caption', 'Controlar o serviço sem aguardar o RCON.'),
+      button('Parar', () => operation('server_control', { action: 'stop', force: true }), 'button danger'),
+      button('Reiniciar', () => operation('server_control', { action: 'restart', force: true }), 'button danger')),
     edit,
     section(
       "Serviços",
@@ -1300,6 +1311,13 @@ async function renderAccess() {
       ),
     ),
   );
+  $('#view').append(section('Sessões', ...(data.sessions || []).map(s => row(
+    s.current ? 'Este dispositivo' : 'Outro dispositivo', time(s.created, true), null,
+    button('Encerrar', async () => {
+      await api('/access/sessions/' + s.token, {}, 'DELETE');
+      if (s.current) showLogin(); else await renderAccess();
+    }, 'button small')
+  ))));
   if (level() === 3) {
     const name = input(),
       role = select(ROLES, "observer");
@@ -1310,7 +1328,7 @@ async function renderAccess() {
           row(
             u.name,
             `${ROLES[u.role]} · ${u.disabled ? "Acesso suspenso" : u.credential_count + " chave(s)"}`,
-            u.id !== state.session.user.id
+            true
               ? () => {
                   const roles = select(ROLES, u.role),
                     disabled = input("", "checkbox");
@@ -1326,10 +1344,10 @@ async function renderAccess() {
                         el(
                           "p",
                           "caption",
-                          "Salvar encerra as sessões desta pessoa, pausa suas rotinas e cancela suas operações ainda na fila.",
+                          "Suspender o acesso encerra as sessões. Alterar permissões mantém as ações ainda permitidas.",
                         ),
                       ],
-                      "Salvar e encerrar sessões",
+                      "Salvar",
                       async () => {
                         await api(
                           "/access/users/" + u.id,
@@ -1399,7 +1417,7 @@ function consoleView() {
 async function navigate(page) {
   if (!PAGES[page]) page = "now";
   if (
-    state.dirty &&
+    state.dirty && !state.draftSaved &&
     page !== state.page &&
     !window.confirm(
       "Descartar as alterações de configuração que ainda não foram gravadas?",
@@ -1655,11 +1673,15 @@ $("#login-enroll").onclick = () =>
 $("#login-demo").onclick = () =>
   busy($("#login-demo"), async () => enter(await api("/auth/demo", {})));
 window.addEventListener("beforeunload", (e) => {
-  if (state.dirty) {
+  if (state.dirty && !state.draftSaved) {
     e.preventDefault();
     e.returnValue = "";
   }
 });
+// Renew the cookie even when the user stays on a stream-only workspace.
+setInterval(() => {
+  if (state.session) api('/session').catch(() => {});
+}, 300000);
 window.addEventListener("hashchange", () => {
   if (state.session) navigate(location.hash.slice(1));
 });

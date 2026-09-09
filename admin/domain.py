@@ -3,22 +3,33 @@ import math
 import re
 
 ROLES = {'owner': 3, 'administrator': 2, 'moderator': 1, 'observer': 0}
+
+
+def operation_resources(kind):
+    if kind in ('backup', 'restore_backup', 'maintenance', 'recover_restore'):
+        return {'world', 'repository'}
+    if kind.startswith('backup_') or kind == 'verify_backup':
+        return {'repository'}
+    return {'world'}
+
+
 OPERATIONS = {
     'backup_policy': {'label': 'Configurar backups', 'role': 2, 'review': False, 'schedule': False},
     'backup_edit': {'label': 'Editar ponto', 'role': 2, 'review': False, 'schedule': False},
-    'backup_delete': {'label': 'Excluir ponto', 'role': 3, 'review': True, 'schedule': False},
+    'backup_delete': {'label': 'Excluir backup', 'role': 2, 'review': True, 'schedule': False},
     'backup_check': {'label': 'Verificar repositório', 'role': 2, 'review': False, 'schedule': False},
-    'backup_compact': {'label': 'Aplicar retenção', 'role': 2, 'review': True, 'schedule': False},
-    'environment_apply': {'label': 'Ajustar ambiente', 'role': 2, 'review': True, 'schedule': False},
+    'backup_compact': {'label': 'Liberar espaço', 'role': 2, 'review': False, 'schedule': False},
+    'environment_apply': {'label': 'Ajustar ambiente', 'role': 2, 'review': False, 'schedule': False},
     'save': {'label': 'Salvar mundo', 'role': 2, 'review': False, 'schedule': True},
     'backup': {'label': 'Criar backup', 'role': 2, 'review': False, 'schedule': True},
     'verify_backup': {'label': 'Verificar backup', 'role': 2, 'review': False, 'schedule': False},
-    'restore_backup': {'label': 'Restaurar mundo', 'role': 3, 'review': True, 'schedule': False},
+    'restore_backup': {'label': 'Restaurar mundo', 'role': 2, 'review': True, 'schedule': False},
+    'recover_restore': {'label': 'Reverter restauração interrompida', 'role': 2, 'review': True, 'schedule': False},
     'map_refresh': {'label': 'Atualizar mapa', 'role': 2, 'review': False, 'schedule': True},
-    'console': {'label': 'Executar comando', 'role': 3, 'review': True, 'schedule': False},
-    'player_action': {'label': 'Administrar jogador', 'role': 1, 'review': True, 'schedule': False},
+    'console': {'label': 'Executar comando', 'role': 3, 'review': False, 'schedule': False},
+    'player_action': {'label': 'Administrar jogador', 'role': 1, 'review': False, 'schedule': False},
     'server_control': {'label': 'Controlar servidor', 'role': 2, 'review': True, 'schedule': False},
-    'settings_apply': {'label': 'Aplicar configurações', 'role': 2, 'review': True, 'schedule': False},
+    'settings_apply': {'label': 'Aplicar configurações', 'role': 2, 'review': False, 'schedule': False},
     'maintenance': {'label': 'Preparar manutenção', 'role': 2, 'review': True, 'schedule': False},
 }
 
@@ -102,14 +113,17 @@ def validate(kind, params, role='owner'):
             raise ValueError('Pinned must be a boolean.')
         return p
     allowed = {
-        'save': set(), 'backup': {'name'}, 'verify_backup': {'backup', 'boot'}, 'restore_backup': {'backup', 'fingerprint'},
+        'save': set(), 'recover_restore': set(), 'backup': {'name', 'automatic', 'activity_at'}, 'verify_backup': {'backup', 'boot'}, 'restore_backup': {'backup', 'fingerprint'},
         'map_refresh': set(), 'console': {'command'}, 'player_action': {'player', 'action', 'reason', 'target'},
-        'server_control': {'action'}, 'settings_apply': {'changes', 'revision'}, 'maintenance': {'restart'},
+        'server_control': {'action', 'force'}, 'settings_apply': {'changes', 'revision'}, 'maintenance': {'restart'},
     }[kind]
     if p.keys() - allowed:
         raise ValueError('Unexpected operation parameters.')
     if kind == 'backup':
-        p = {'name': clean_text(p.get('name', 'Ponto de recuperação'), 80, 1)}
+        if type(p.get('automatic', False)) is not bool or not isinstance(p.get('activity_at', 0), (int, float)) or not math.isfinite(p.get('activity_at', 0)):
+            raise ValueError('Invalid activity checkpoint.')
+        p = {'name': clean_text(p.get('name', 'Backup'), 80, 1),
+             'automatic': p.get('automatic', False), 'activity_at': max(0, p.get('activity_at', 0))}
     elif kind in ('verify_backup', 'restore_backup'):
         if not isinstance(p.get('backup'), str) or not (BACKUP.fullmatch(p['backup']) or re.fullmatch(r'[a-f0-9]{64}', p['backup'])):
             raise ValueError('Invalid recovery point.')
@@ -122,8 +136,9 @@ def validate(kind, params, role='owner'):
     elif kind == 'console':
         command = clean_text(p.get('command'), 500, 1).removeprefix('/')
         # Also reject nested execute/function dispatch that could bypass world locks.
-        tokens = {part.removeprefix('minecraft:') for part in command.split()}
-        if tokens & {'stop', 'save-off', 'save-on', 'save-all', 'function', 'schedule'}:
+        words = command.split()
+        roots = [words[0]] + [words[i+1] for i, word in enumerate(words[:-1]) if word == 'run' and words[0].removeprefix('minecraft:') == 'execute']
+        if any(word.removeprefix('minecraft:') in {'stop', 'save-off', 'save-on', 'save-all', 'function', 'schedule'} for word in roots):
             raise ValueError('Use the named world or server action for lifecycle commands.')
         p = {'command': command}
     elif kind == 'player_action':
@@ -146,6 +161,8 @@ def validate(kind, params, role='owner'):
     elif kind == 'server_control':
         if p.get('action') not in ('start', 'stop', 'restart'):
             raise ValueError('Unsupported server action.')
+        if type(p.get('force', False)) is not bool:
+            raise ValueError('Force must be a boolean.')
     elif kind == 'settings_apply':
         p['changes'] = settings_changes(p.get('changes'))
         if not re.fullmatch(r'[a-f0-9]{64}', p.get('revision', '')):

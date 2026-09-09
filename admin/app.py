@@ -38,9 +38,9 @@ def create_app(settings=None, agent=None, *, background=True):
             agent = AgentClient(settings.socket)
     auth = Auth(store, settings)
     worker = Worker(store, agent, settings.poll_seconds)
-    login_attempts = deque(maxlen=200)
-    streams = asyncio.Semaphore(12)
-    position_streams = asyncio.Semaphore(12)
+    login_attempts = {}
+    streams = asyncio.Semaphore(128)
+    position_streams = asyncio.Semaphore(128)
     positions = LivePositions()
     skins = SkinCache()
 
@@ -79,12 +79,25 @@ def create_app(settings=None, agent=None, *, background=True):
                 request._body = bytes(body)
                 if request.url.path.startswith(API + '/auth/'):
                     now = time.monotonic()
-                    while login_attempts and login_attempts[0] < now - 60:
-                        login_attempts.popleft()
-                    if len(login_attempts) >= 30:
+                    # The loopback reverse proxy must supply the real client address.
+                    client = request.headers.get('x-real-ip') or (request.client.host if request.client else 'unknown')
+                    for key in list(login_attempts):
+                        if not login_attempts[key] or login_attempts[key][-1] < now - 60:
+                            del login_attempts[key]
+                    attempts = login_attempts.setdefault(client, deque(maxlen=60))
+                    while attempts and attempts[0] < now - 60:
+                        attempts.popleft()
+                    if len(attempts) >= 60 or len(login_attempts) > 10000:
                         return JSONResponse({'error': 'Muitas tentativas. Aguarde um minuto.'}, status_code=429, headers={'Retry-After': '60'})
-                    login_attempts.append(now)
+                    attempts.append(now)
         response = await call_next(request)
+        if request.url.path.startswith(API) and not request.url.path.startswith(API + '/auth/') and response.status_code < 400:
+            token = request.cookies.get(settings.cookie)
+            active = store.current_session(token)
+            if active and active['expires'] < time.time() + settings.session_seconds - 86400:
+                with store.transaction() as db:
+                    db.execute('UPDATE sessions SET expires=? WHERE token=?', (time.time() + settings.session_seconds, active['token']))
+                response.set_cookie(settings.cookie, token, max_age=settings.session_seconds, path='/admin', secure=settings.secure, httponly=True, samesite='strict')
         response.headers['Cache-Control'] = 'no-store'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Referrer-Policy'] = 'no-referrer'
@@ -326,8 +339,8 @@ def create_app(settings=None, agent=None, *, background=True):
         identifier = secrets.token_urlsafe(24)
         with store.transaction() as db:
             db.execute('DELETE FROM reviews WHERE expires<?', (time.time(),))
-            db.execute('INSERT INTO reviews VALUES(?,?,?,?,?,?,0)', (identifier, user['user_id'], kind, encode(params), encode(preview), time.time() + 300))
-        return {'id': identifier, **preview, 'expires_in': 300}
+            db.execute('INSERT INTO reviews VALUES(?,?,?,?,?,?,0)', (identifier, user['user_id'], kind, encode(params), encode(preview), time.time() + settings.session_seconds))
+        return {'id': identifier, **preview, 'expires_in': settings.session_seconds}
 
     @app.post(API + '/jobs', status_code=202)
     async def submit(request: Request):
@@ -343,9 +356,18 @@ def create_app(settings=None, agent=None, *, background=True):
         return store.create_job(user['user_id'], kind, OPERATIONS[kind]['label'], params, key, data.get('review'))
 
     @app.post(API + '/jobs/{jid}/cancel')
-    def cancel(request: Request, jid: str):
-        current(request, 2)
-        store.cancel(jid)
+    async def cancel(request: Request, jid: str):
+        user = current(request, 2)
+        job = store.job(jid)
+        if not job:
+            raise HTTPException(404)
+        validate(job['kind'], job['params'], user['role'])
+        if job['state'] == 'running':
+            await asyncio.to_thread(agent.call, 'cancel', {'job': jid})
+            with store.transaction() as db:
+                db.execute("UPDATE jobs SET step='Cancelamento solicitado',updated=? WHERE id=? AND state='running'", (time.time(), jid))
+        else:
+            store.cancel(jid)
         return {'ok': True}
 
     @app.post(API + '/jobs/{jid}/reconcile')
@@ -357,7 +379,7 @@ def create_app(settings=None, agent=None, *, background=True):
         if not row or row['state'] != 'interrupted':
             raise ValueError('Only interrupted jobs require reconciliation.')
         receipt = await asyncio.to_thread(agent.call, 'receipt', {'job': jid})
-        if receipt and receipt['state'] in ('completed', 'failed'):
+        if receipt and receipt['state'] in ('completed', 'failed', 'cancelled'):
             store.finish(jid, receipt['state'], result=receipt.get('result'), error=receipt.get('error'))
         return {'job': store.job(jid), 'receipt_state': receipt['state'] if receipt else 'not_found'}
 
@@ -399,8 +421,6 @@ def create_app(settings=None, agent=None, *, background=True):
         data = place(await body(request))
         uid = str(uuid.uuid4())
         with store.transaction() as db:
-            if db.execute('SELECT count(*) FROM places').fetchone()[0] >= 500:
-                raise ValueError('The place limit has been reached.')
             db.execute('INSERT INTO places VALUES(?,?,?,?,?,?,?,?,?)', (uid, data['name'], data['dimension'], data['x'], data['y'], data['z'], data['note'], time.time(), user['user_id']))
             store.event('place', 'Place added', user['user_id'], {'place_id': uid, 'name': data['name']}, db)
         return {'id': uid, **data}
@@ -437,8 +457,6 @@ def create_app(settings=None, agent=None, *, background=True):
         label = clean_text(data.get('label', OPERATIONS[kind]['label']), 80, 1)
         sid = str(uuid.uuid4())
         with store.transaction() as db:
-            if db.execute('SELECT count(*) FROM schedules').fetchone()[0] >= 20:
-                raise ValueError('The schedule limit has been reached.')
             db.execute('INSERT INTO schedules VALUES(?,?,?,?,?,?,?,?)', (sid, label, kind, encode(params), minutes, time.time() + minutes * 60, 1, user['user_id']))
             store.event('schedule', 'Schedule created', user['user_id'], {'schedule_id': sid, 'label': label}, db)
         return {'id': sid}
@@ -466,9 +484,19 @@ def create_app(settings=None, agent=None, *, background=True):
     def access(request: Request):
         user = current(request)
         result = {'credentials': store.rows('SELECT id,name,created FROM credentials WHERE user_id=?', (user['user_id'],))}
+        result['sessions'] = [{**s, 'current': s['token'] == user['token']} for s in store.rows(
+            'SELECT token,created,expires FROM sessions WHERE user_id=? AND expires>? ORDER BY created DESC', (user['user_id'], time.time()))]
         if user['role'] == 'owner':
             result['users'] = store.rows('SELECT u.id,u.name,u.role,u.created,u.disabled,(SELECT count(*) FROM credentials c WHERE c.user_id=u.id) AS credential_count FROM users u ORDER BY u.created')
         return result
+
+    @app.delete(API + '/access/sessions/{sid}')
+    def revoke_session(request: Request, sid: str):
+        user = current(request)
+        with store.transaction() as db:
+            db.execute('DELETE FROM sessions WHERE token=? AND user_id=?', (sid, user['user_id']))
+            store.event('access', 'Session revoked', user['user_id'], db=db)
+        return {'ok': True}
 
     @app.post(API + '/access/invite')
     async def invite(request: Request):
@@ -484,18 +512,33 @@ def create_app(settings=None, agent=None, *, background=True):
     @app.patch(API + '/access/users/{uid}')
     async def update_user(request: Request, uid: str):
         actor = current(request, 3)
-        if uid == actor['user_id']:
-            raise ValueError('Use a second owner to change your own access.')
         data = await body(request)
         role, disabled = data.get('role'), data.get('disabled', False)
         if role not in ROLES or type(disabled) is not bool:
             raise ValueError('Invalid account settings.')
         with store.transaction() as db:
+            previous = db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
+            if not previous:
+                raise HTTPException(404)
+            if previous['role'] == role and bool(previous['disabled']) == disabled:
+                return {'ok': True}
+            if previous['role'] == 'owner' and not previous['disabled'] and (role != 'owner' or disabled):
+                others = db.execute("SELECT count(*) FROM users WHERE role='owner' AND disabled=0 AND id!=?", (uid,)).fetchone()[0]
+                if not others:
+                    raise ValueError('Mantenha pelo menos um proprietário ativo.')
             db.execute('UPDATE users SET role=?,disabled=? WHERE id=?', (role, int(disabled), uid))
-            db.execute('DELETE FROM sessions WHERE user_id=?', (uid,))
             db.execute('DELETE FROM invites WHERE user_id=?', (uid,))
-            db.execute('UPDATE schedules SET enabled=0 WHERE actor=?', (uid,))
-            db.execute("UPDATE jobs SET state='cancelled' WHERE actor=? AND state='queued'", (uid,))
+            if disabled:
+                db.execute('DELETE FROM sessions WHERE user_id=?', (uid,))
+            for table, condition in [('schedules', 'enabled=1'), ('jobs', "state='queued'")]:
+                for row in db.execute(f'SELECT * FROM {table} WHERE actor=? AND {condition}', (uid,)).fetchall():
+                    try:
+                        if disabled:
+                            raise PermissionError()
+                        validate(row['kind'], json.loads(row['params']), role)
+                    except PermissionError:
+                        update = 'enabled=0' if table == 'schedules' else "state='cancelled'"
+                        db.execute(f'UPDATE {table} SET {update} WHERE id=?', (row['id'],))
             store.event('access', 'Account permissions changed', actor['user_id'], {'user_id': uid, 'role': role, 'disabled': disabled}, db)
         return {'ok': True}
 

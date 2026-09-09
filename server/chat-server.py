@@ -5,7 +5,7 @@ condition=threading.Condition(); snapshot='{}'; revision=0
 web_messages=collections.deque(maxlen=60)
 rate_lock=threading.Lock();recent={};global_rate=collections.deque()
 streams=threading.BoundedSemaphore(32)
-admin_streams=threading.BoundedSemaphore(16)
+admin_streams=threading.BoundedSemaphore(128)
 # Floodgate adds a dot prefix to Bedrock names; keep system/private logs excluded.
 GAME_CHAT=re.compile(r'^\[([\d:]+)\] \[Server thread/INFO\]: (?:\[Not Secure\] )?<([.]?[A-Za-z0-9_]{1,16})> (.*)$')
 def exact(s,n):
@@ -67,6 +67,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
    if not 0<=size<=65536:return self.result(413,{'error':'Solicitação muito grande.'})
    data=self.rfile.read(size) if size else None
    headers={name:self.headers[name] for name in ('Origin','Content-Type','Cookie','X-Oak-CSRF','Idempotency-Key','Accept') if name in self.headers}
+   headers['X-Real-IP']=self.headers.get('X-Oak-Client-IP',self.client_address[0]).split(',')[-1].strip()
    connection.request(self.command,self.path,body=data,headers=headers)
    response=connection.getresponse()
    self.send_response(response.status)

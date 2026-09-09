@@ -13,8 +13,12 @@ import signal
 import threading
 import time
 
-from .domain import validate
+from .domain import validate, operation_resources
 from .runtime import Runtime, atomic
+
+
+class OperationCancelled(RuntimeError):
+    pass
 
 
 class AgentClient:
@@ -52,7 +56,8 @@ class AgentServer(getattr(socketserver, 'ThreadingUnixStreamServer', object)):
         self.runtime = runtime
         self.receipts = runtime.control / 'receipts'
         self.receipts.mkdir(mode=0o700, exist_ok=True)
-        self.execution_lock = threading.Lock()
+        self.execution_locks = {name: threading.Lock() for name in ('world', 'repository')}
+        self.receipt_lock = threading.Lock()
         self.slots = threading.BoundedSemaphore(8)
         super().__init__(path, AgentHandler)
 
@@ -100,6 +105,12 @@ class AgentHandler(socketserver.StreamRequestHandler):
                     raise ValueError('Invalid receipt.')
                 path = self.server.receipts / (jid + '.json')
                 result = json.loads(path.read_text()) if path.exists() else None
+            elif method == 'cancel':
+                jid = data.get('job', '')
+                if not re.fullmatch(r'[a-f0-9-]{36}', jid):
+                    raise ValueError('Invalid operation identifier.')
+                atomic(self.server.receipts / (jid + '.cancel'), 'requested')
+                result = {'requested': True}
             elif method == 'execute':
                 result = self.execute(data)
             else:
@@ -117,19 +128,28 @@ class AgentHandler(socketserver.StreamRequestHandler):
             raise ValueError('Invalid operation identifier.')
         params = validate(kind, data.get('params'))
         path = self.server.receipts / (jid + '.json')
-        if not self.server.execution_lock.acquire(blocking=False):
-            raise RuntimeError('A host operation is already running.')
+        acquired = []
+        for resource in sorted(operation_resources(kind)):
+            lock = self.server.execution_locks[resource]
+            if not lock.acquire(blocking=False):
+                for held in reversed(acquired):
+                    held.release()
+                raise RuntimeError('O recurso está ocupado. A operação pode ser tentada novamente.')
+            acquired.append(lock)
         try:
-            if path.exists():
-                receipt = json.loads(path.read_text())
-                if receipt['kind'] != kind or receipt['params'] != params:
-                    raise ValueError('Operation identifier already used for different input.')
-                if receipt['state'] == 'completed':
-                    return receipt['result']
-                raise RuntimeError('This operation already reached the host. Inspect its receipt; it will not be replayed.')
-            receipt = {'job': jid, 'kind': kind, 'params': params, 'state': 'running', 'started': time.time()}
-            atomic(path, json.dumps(receipt))
+            with self.server.receipt_lock:
+                if path.exists():
+                    receipt = json.loads(path.read_text())
+                    if receipt['kind'] != kind or receipt['params'] != params:
+                        raise ValueError('Operation identifier already used for different input.')
+                    if receipt['state'] in ('completed', 'cancelled'):
+                        return receipt['result']
+                    raise RuntimeError('This operation already reached the host. Inspect its receipt; it will not be replayed.')
+                receipt = {'job': jid, 'kind': kind, 'params': params, 'state': 'running', 'started': time.time()}
+                atomic(path, json.dumps(receipt))
             def progress(step, detail=''):
+                if (self.server.receipts / (jid + '.cancel')).exists():
+                    raise OperationCancelled('Operação cancelada no próximo ponto seguro.')
                 receipt.update(step=step, updated=time.time())
                 atomic(path, json.dumps(receipt))
                 self.send({'type': 'progress', 'step': step, 'detail': detail})
@@ -138,12 +158,18 @@ class AgentHandler(socketserver.StreamRequestHandler):
                 receipt.update(state='completed', result=result, finished=time.time())
                 atomic(path, json.dumps(receipt))
                 return result
+            except OperationCancelled:
+                result = {'cancelled': True}
+                receipt.update(state='cancelled', result=result, finished=time.time())
+                atomic(path, json.dumps(receipt))
+                return result
             except Exception as exc:
                 receipt.update(state='failed', error=str(exc) if isinstance(exc, (ValueError, RuntimeError)) else type(exc).__name__, finished=time.time())
                 atomic(path, json.dumps(receipt))
                 raise
         finally:
-            self.server.execution_lock.release()
+            for held in reversed(acquired):
+                held.release()
 
 
 def main():

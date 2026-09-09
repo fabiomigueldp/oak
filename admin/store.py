@@ -185,8 +185,13 @@ class Store:
         return [self.decode_job(row) for row in self.rows('SELECT * FROM jobs ORDER BY created DESC LIMIT 100')]
 
     def claim(self):
+        from .domain import operation_resources
         with self.transaction() as db:
-            row = db.execute("SELECT * FROM jobs WHERE state='queued' ORDER BY created LIMIT 1").fetchone()
+            occupied = set()
+            for active in db.execute("SELECT kind FROM jobs WHERE state='running'"):
+                occupied.update(operation_resources(active['kind']))
+            row = next((r for r in db.execute("SELECT * FROM jobs WHERE state='queued' ORDER BY created")
+                        if not operation_resources(r['kind']) & occupied), None)
             if row:
                 db.execute("UPDATE jobs SET state='running',updated=?,step='Starting' WHERE id=?", (time.time(), row['id']))
         return self.job(row['id']) if row else None
@@ -226,6 +231,8 @@ class Store:
             db.execute('DELETE FROM events WHERE created<?', (now - 90 * 86400,))
             # Stale data cannot establish joins or departures.
             if snapshot.get('fresh'):
+                if names:
+                    db.execute("INSERT INTO kv VALUES('backup_activity',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (encode(now),))
                 online = {r['name']: r for r in db.execute('SELECT * FROM player_sessions WHERE left_at IS NULL')}
                 for name, player in names.items():
                     if name not in online:
@@ -262,8 +269,6 @@ class Store:
         if not status.get('ready') or now - status.get('sampled_at', 0) > 60:
             return
         policy = status['policy']
-        if not policy['enabled']:
-            return
         points = status['backups']
         health = status.get('health', {})
         due = status.get('next_run') or 0
@@ -272,14 +277,14 @@ class Store:
                     if p.get('compatible') and p.get('restoration', {}).get('playable_boot_tested')
                     and all(p.get('manifest', {}).get(k) == profile.get(k) for k in ('version', 'mods'))), default=0)
         candidates = []
-        if status.get('bytes', 0) >= policy['budget_gib'] * 1024**3 and health.get('compacted', 0) + 86400 <= now:
+        if health.get('needs_reclaim') or status.get('bytes', 0) > policy['budget_gib'] * 1024**3:
             candidates.append(('backup_compact', {'revision': policy['revision']}, 'Retenção automática'))
-        if due <= now:
-            candidates.append(('backup', {'name': 'Automático'}, 'Backup automático'))
+        if policy['enabled'] and due <= now:
+            candidates.append(('backup', {'name': 'Automático', 'automatic': True, 'activity_at': self.get('backup_activity', 0)}, 'Backup automático'))
         if points and (health.get('check_failed') or health.get('data_checked', 0) + policy['check_days'] * 86400 <= now):
             candidates.append(('backup_check', {}, 'Verificação automática'))
-        if points and not health.get('check_failed') and boot + policy['boot_days'] * 86400 <= now:
-            point = next((p for p in points if p.get('compatible') and p.get('integrity') and p.get('manifest', {}).get('includes_runtime')), None)
+        if points and boot + policy['boot_days'] * 86400 <= now:
+            point = next((p for p in points if p.get('manifest', {}).get('includes_runtime')), None)
             if point:
                 candidates.append(('verify_backup', {'backup': point['id'], 'boot': True}, 'Teste automático de recuperação'))
         if points and health.get('compacted', 0) + 86400 <= now:
@@ -289,7 +294,7 @@ class Store:
                 return
             for kind, params, label in candidates:
                 last = db.execute("SELECT updated FROM jobs WHERE actor='backup-policy' AND kind=? ORDER BY created DESC LIMIT 1", (kind,)).fetchone()
-                if last and now - last['updated'] < 1800:
+                if last and now - last['updated'] < 300:
                     continue
                 jid = str(uuid.uuid4())
                 db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (jid, now, now, 'backup-policy', kind, label, encode(params), 'queued', 'Queued', None, None, 'policy:' + jid))

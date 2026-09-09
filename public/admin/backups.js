@@ -1,4 +1,4 @@
-import { bytes, time, ago, proof, JOB_STATES } from './model.js';
+import { bytes, time, ago, JOB_STATES } from './model.js';
 
 let selected = null;
 let query = '';
@@ -9,7 +9,7 @@ let pendingRefresh = false;
 export function backupUpdated(context) {
   if (context.state.page !== 'backups') return;
   const signature = JSON.stringify((context.state.overview.jobs || []).map(j => [j.id, j.state, j.step]));
-  if (signature === latestSignature || pendingRefresh || document.querySelector('.recovery-workspace')?.contains(document.activeElement)) return;
+  if (signature === latestSignature || pendingRefresh || document.activeElement?.matches('.recovery-workspace input, .recovery-workspace select')) return;
   latestSignature = signature;
   pendingRefresh = true;
   renderBackups(context).catch(() => {}).finally(() => { pendingRefresh = false; });
@@ -24,10 +24,10 @@ export async function renderBackups(c) {
   const points = data.backups;
   const policy = data.policy;
   const current = points[0];
-  const lastTest = points.find(p => p.restoration?.playable_boot_tested);
   const active = data.jobs.find(j => ['queued', 'running', 'interrupted'].includes(j.state));
-  const overdue = policy.enabled && (!current || Date.now()/1000 - current.created > policy.interval_minutes * 60 + 1800);
-  const status = !data.ready ? 'Não instalado' : overdue ? 'Backup atrasado' : policy.enabled ? 'Automático' : 'Automação pausada';
+  const overdue = policy.enabled && data.next_run && Date.now()/1000 > data.next_run + 1800;
+  const idle = data.health?.last_skipped > (current?.created || 0);
+  const status = !data.ready ? 'Não instalado' : overdue ? 'Rotina atrasada' : policy.enabled ? idle ? 'Sem alterações' : 'Automático' : 'Pausado';
   const tag = (label, kind = '') => el('span', 'recovery-tag ' + kind, label);
   const metric = (label, value) => el('div', 'recovery-metric', el('span', '', label), el('strong', '', value));
   const create = el('div', 'recovery-create');
@@ -53,16 +53,18 @@ export async function renderBackups(c) {
   root.append(el('div', 'recovery-summary',
     el('div', 'recovery-mode', tag(status, overdue ? 'warning' : policy.enabled ? 'good' : ''), el('small', '', 'Oracle · local')),
     metric('Último ponto', current ? ago(current.created) : 'Sem ponto'),
-    metric('Próximo', policy.enabled ? (data.next_run && !overdue ? time(data.next_run, true) : 'Na próxima execução') : 'Pausado'),
-    metric('Recuperação testada', lastTest ? ago(lastTest.restoration.at) : 'Pendente')));
+    metric('Próxima avaliação', policy.enabled ? (data.next_run && !overdue ? time(data.next_run, true) : 'Na próxima execução') : 'Pausado'),
+    metric('Mais antigo', points.length ? time(points.at(-1).created, true) : 'Sem backup')));
   if (active) root.append(button(active.label + ' · ' + (active.step || JOB_STATES[active.state]), () => showJob(active.id), 'recovery-running', 'activity'));
-  if (data.health?.check_failed) root.append(el('p', 'notice', 'A verificação do repositório falhou. Consulte a operação antes de restaurar.'));
+  if (data.recovery_pending && can('recover_restore')) root.append(button('Reverter restauração interrompida', () => operation('recover_restore'), 'button danger'));
+  if (data.health?.check_failed) root.append(el('p', 'notice', 'A última verificação falhou. Cada restauração verifica os arquivos selecionados antes de substituir o mundo.'));
+  if (data.health?.capacity_limited) root.append(el('p', 'notice', 'O backup mais recente excede o orçamento. Aumente o espaço para manter histórico.'));
   const workspace = el('div', 'recovery-columns');
   const history = el('section', 'recovery-history');
   history.setAttribute('aria-label', 'Pontos de recuperação');
   const search = input(query, 'search');
   search.placeholder = 'Buscar pontos'; search.setAttribute('aria-label', 'Buscar pontos');
-  const filters = select({ all: 'Todos', pinned: 'Fixados', tested: 'Testados' }, filter);
+  const filters = select({ all: 'Todos', pinned: 'Favoritos' }, filter);
   filters.setAttribute('aria-label', 'Filtrar pontos');
   const list = el('div', 'recovery-list');
   const details = el('section', 'recovery-detail');
@@ -73,8 +75,7 @@ export async function renderBackups(c) {
     for (const item of list.children) item.setAttribute('aria-pressed', String(item.dataset.point === selected));
     details.replaceChildren();
     detailsHeading.textContent = p.name;
-    const evidence = proof(p);
-    details.append(el('div', 'recovery-detail-heading', detailsHeading, tag(p.pinned ? 'Fixado' : p === current ? 'Mais recente' : evidence.label, p.pinned ? '' : evidence.state)));
+    details.append(el('div', 'recovery-detail-heading', detailsHeading, p.pinned ? tag('Favorito') : p === current ? tag('Mais recente') : null));
     details.append(el('p', 'recovery-date', time(p.created, true)));
     const facts = el('dl', 'recovery-facts');
     for (const [label, value] of Object.entries({
@@ -89,25 +90,25 @@ export async function renderBackups(c) {
       ['Extração', p.restoration?.level, p.restoration?.level ? time(p.restoration.at, true) : 'Pendente'],
       ['Inicialização isolada', p.restoration?.playable_boot_tested, p.restoration?.playable_boot_tested ? `${Math.round(p.restoration.boot_seconds || 0)} s · ${time(p.restoration.at, true)}` : 'Pendente'],
     ]) checks.append(el('li', '', el('span', 'recovery-check-mark ' + (checked ? 'good' : ''), checked ? '✓' : '·'), el('span', '', label), el('small', '', value)));
-    details.append(checks);
+    const verification = el('details', 'recovery-disclosure', el('summary', '', 'Verificações'), checks);
     if (p.verification_failed) details.append(el('p', 'recovery-caution', `A última verificação falhou em ${time(p.verification_failed.at, true)}. Consulte a operação.`));
     const actions = el('div', 'recovery-actions');
     if (can('verify_backup')) {
-      actions.append(button('Verificar extração', () => operation('verify_backup', { backup: p.id, boot: false }), 'button small', 'check'));
-      if (p.manifest?.includes_runtime || p.source === 'oak') actions.append(button('Testar recuperação', () => operation('verify_backup', { backup: p.id, boot: true }), 'button small', 'flask'));
+      verification.append(button('Verificar arquivos', () => operation('verify_backup', { backup: p.id, boot: false }), 'button small', 'check'));
+      if (p.manifest?.includes_runtime || p.source === 'oak') verification.append(button('Testar inicialização', () => operation('verify_backup', { backup: p.id, boot: true }), 'button small', 'flask'));
     }
     if (can('restore_backup') && p.restorable) actions.append(button('Restaurar', () => operation('restore_backup', { backup: p.id, fingerprint: p.fingerprint }), 'button danger small'));
     details.append(actions);
-    if (p.source === 'repository' && !p.compatible) details.append(el('p', 'recovery-caution', 'Componentes externos alterados. Restauração requer revisão pelo operador.'));
+    details.append(verification);
+    if (can('restore_backup') && !p.restorable) details.append(el('p', 'recovery-caution', 'Este arquivo não contém o servidor completo para restauração pelo painel.'));
     const more = el('details', 'recovery-disclosure', el('summary', '', 'Gerenciar ponto'));
     if (can('backup_edit') && p.source === 'repository') {
       const rename = input(p.name); rename.maxLength = 80;
       more.append(field('Nome', rename), el('div', 'recovery-actions',
         button('Salvar nome', () => operation('backup_edit', { backup: p.id, name: rename.value }), 'button small'),
-        button(p.pinned ? 'Desafixar' : 'Fixar ponto', () => operation('backup_edit', { backup: p.id, pinned: !p.pinned }), 'button small')));
-      const protectedPoint = p.pinned || p.id === current?.id || p.id === lastTest?.id;
-      if (can('backup_delete') && !protectedPoint) more.append(button('Excluir ponto', () => operation('backup_delete', { backup: p.id }), 'button danger small'));
-      if (protectedPoint) more.append(el('p', 'caption', 'Protegido contra exclusão pela retenção.'));
+        button(p.pinned ? 'Remover favorito' : 'Favoritar', () => operation('backup_edit', { backup: p.id, pinned: !p.pinned }), 'button small')));
+      if (can('backup_delete')) more.append(button('Excluir backup', () => operation('backup_delete', { backup: p.id }), 'button danger small'));
+      if (p.pinned) more.append(el('p', 'caption', 'Favoritos seguem a mesma limpeza automática.'));
     }
     more.append(el('p', 'recovery-id', p.id), el('p', 'caption', 'Mundo, mods, configurações e runtime. Serviços externos e mapa ficam fora da restauração.'));
     details.append(more);
@@ -122,7 +123,7 @@ export async function renderBackups(c) {
       item.dataset.point = p.id;
       item.append(el('span', 'recovery-point-date', el('strong', '', date.toLocaleDateString('pt-BR', { day: '2-digit' })), el('small', '', date.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''))),
         el('span', 'recovery-point-name', el('strong', '', p.name), el('small', '', `${time(p.created)} · ${bytes(p.added_bytes ?? p.bytes)}${p.added_bytes != null ? ' novos' : ''}`)),
-        tag(p.pinned ? 'Fixado' : p.restoration?.playable_boot_tested ? 'Testado' : p.integrity ? 'Verificado' : 'Pendente', p.restoration?.playable_boot_tested ? 'good' : ''));
+        p.pinned ? tag('Favorito') : el('span'));
       list.append(item);
     }
     if (!visible.length) { list.append(el('p', 'recovery-empty', points.length ? 'Nenhum ponto encontrado.' : 'Crie o primeiro ponto de recuperação.')); details.replaceChildren(); return; }
@@ -138,7 +139,7 @@ export async function renderBackups(c) {
   const used = data.bytes || 0, budget = policy.budget_gib * 1024 ** 3;
   const meter = el('meter'); meter.min = 0; meter.max = budget; meter.value = used; meter.setAttribute('aria-label', 'Uso do orçamento do repositório');
   storage.append(el('div', 'recovery-storage-total', el('span', '', `${bytes(used)} / ${policy.budget_gib} GiB`), el('small', '', `${points.length} pontos`)), meter,
-    el('p', 'caption', `${bytes(data.free_bytes)} livres · reserva de ${bytes(data.reserve_bytes)}`));
+    el('p', 'caption', `${bytes(data.free_bytes)} livres no servidor`));
   if (data.logical_bytes > used && used > 0) storage.append(el('p', 'caption', `${Math.round((1-used/data.logical_bytes)*100)}% menos espaço com deduplicação e compressão.`));
   const storageMore = el('details', 'recovery-disclosure', el('summary', '', 'Verificação e limpeza'));
   storageMore.append(el('p', 'caption', data.health?.data_checked ? `Dados verificados em ${time(data.health.data_checked, true)}.` : 'Verificação completa pendente.'), el('div', 'recovery-actions',
@@ -148,14 +149,14 @@ export async function renderBackups(c) {
   storage.append(storageMore); bottom.append(storage);
   const policySection = el('section', 'recovery-policy', el('h2', '', 'Rotina'));
   policySection.append(el('p', '', policy.enabled ? `A cada ${policy.interval_minutes >= 60 && policy.interval_minutes % 60 === 0 ? policy.interval_minutes / 60 + ' h' : policy.interval_minutes + ' min'}` : 'Pausada'),
-    el('p', 'caption', `${policy.keep_recent} recentes · ${policy.keep_daily} diários · ${policy.keep_weekly} semanais`));
+    el('p', 'caption', 'Somente com alterações. Os mais antigos saem quando faltar espaço.'));
   if (can('backup_policy')) {
     const settings = el('details', 'recovery-disclosure', el('summary', '', 'Configurar'));
     const policyForm = el('form', 'recovery-policy-form');
     const enabled = select({ true: 'Ativa', false: 'Pausada' }, String(policy.enabled));
     const fields = {};
     policyForm.append(field('Automação', enabled));
-    for (const [key, label, min, max] of [['interval_minutes','Intervalo (min)',30,10080],['keep_recent','Recentes',2,96],['keep_daily','Diários',0,90],['keep_weekly','Semanais',0,52],['budget_gib','Orçamento (GiB)',5,80],['check_days','Verificar dados (dias)',1,30],['boot_days','Testar recuperação (dias)',1,30]]) {
+    for (const [key, label, min, max] of [['interval_minutes','Intervalo (min)',5,525600],['budget_gib','Espaço (GiB)',1,100000],['check_days','Verificar dados (dias)',1,365],['boot_days','Testar recuperação (dias)',1,365]]) {
       fields[key] = input(policy[key], 'number'); fields[key].min = min; fields[key].max = max; fields[key].required = true;
       policyForm.append(field(label, fields[key]));
     }

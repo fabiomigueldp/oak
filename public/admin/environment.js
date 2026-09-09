@@ -30,9 +30,10 @@ export async function renderEnvironment(ctx) {
     );
     return;
   }
-  let draft = structuredClone(current.policy);
+  const savedDraft = state.getDraft?.('environment');
+  let draft = structuredClone(savedDraft?.policy || current.policy);
   let revision = current.revision;
-  let baseline = JSON.stringify(draft);
+  let baseline = JSON.stringify(current.policy);
   let formError = "";
   let pendingJob = null;
   const editable = can("environment_apply");
@@ -69,6 +70,7 @@ export async function renderEnvironment(ctx) {
       draft = structuredClone(current.policy);
       revision = current.revision;
       baseline = JSON.stringify(draft);
+      state.saveDraft?.('environment', null);
       formError = "";
       sync();
       status();
@@ -114,15 +116,15 @@ export async function renderEnvironment(ctx) {
       segment.title = `${phaseNames[index]} · ${draft[phases[index]]} min`;
     });
     state.dirty = JSON.stringify(draft) !== baseline;
+    state.saveDraft?.('environment', state.dirty ? { policy: draft } : null);
     save.disabled =
       !editable ||
       !!pendingJob ||
       !!current.error ||
-      current.revision !== revision ||
       (!state.dirty && !current.drift);
     save.textContent = current.drift
-      ? "Revisar e retomar controle"
-      : "Revisar e aplicar";
+      ? "Retomar controle"
+      : "Aplicar";
     reset.disabled = !!pendingJob || (!state.dirty && revision === current.revision);
   }
   function control(key, label, options, description, bounds = {}) {
@@ -278,9 +280,10 @@ export async function renderEnvironment(ctx) {
     }
     save.disabled = true;
     try {
+      const latest = await api('/environment');
       await operation("environment_apply", {
         action: "configure",
-        revision,
+        revision: latest.revision,
         policy: structuredClone(draft),
       }, { onQueued: job => { pendingJob = job.id; formError = ""; sync(); status(); } });
     } catch (error) {
@@ -398,7 +401,7 @@ export async function renderEnvironment(ctx) {
     notice.textContent =
       formError || current.error ||
       (current.revision !== revision
-        ? "O ambiente mudou. Descarte o rascunho para carregar a configuração atual."
+        ? "Há uma configuração mais recente. Aplicar grava seu rascunho; descartar carrega a versão atual."
         : current.drift
           ? "Uma alteração externa suspendeu o controle automático e encerrou intervenções. Revise a configuração para retomar."
           : "");
@@ -407,7 +410,7 @@ export async function renderEnvironment(ctx) {
       release.disabled =
       overrideWeather.disabled =
       duration.disabled =
-        !editable || !!pendingJob || !!current.error || current.drift;
+        !editable || !!pendingJob || !!current.error;
     for (const preset of profiles.querySelectorAll("button")) preset.disabled = !editable || !!pendingJob || !!current.error;
     release.hidden = !current.override;
   }
@@ -433,7 +436,7 @@ export async function renderEnvironment(ctx) {
         throw new Error(next.message || "Controlador indisponível.");
       current = next;
       if (settled) pendingJob = null;
-      if (applied) state.dirty = false;
+      if (applied) { state.dirty = false; state.saveDraft?.('environment', null); }
       if (!state.dirty) {
         if (revision !== current.revision) {
           draft = structuredClone(current.policy);
@@ -447,7 +450,6 @@ export async function renderEnvironment(ctx) {
         !editable ||
         !!pendingJob ||
         !!current.error ||
-        current.revision !== revision ||
         (!state.dirty && !current.drift);
       status();
     } catch (error) {

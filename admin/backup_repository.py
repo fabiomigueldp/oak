@@ -19,8 +19,7 @@ import zipfile
 
 GIB = 1024 ** 3
 SNAPSHOT = re.compile(r'[a-f0-9]{64}\Z')
-DEFAULT_POLICY = {'enabled': False, 'interval_minutes': 180, 'keep_recent': 16,
-                  'keep_daily': 7, 'keep_weekly': 4, 'budget_gib': 20,
+DEFAULT_POLICY = {'enabled': False, 'interval_minutes': 180, 'budget_gib': 20,
                   'check_days': 7, 'boot_days': 7}
 
 
@@ -50,30 +49,16 @@ def validate_policy(value):
         raise ValueError('Invalid backup policy fields.')
     if type(value['enabled']) is not bool:
         raise ValueError('Enabled must be a boolean.')
-    for key, low, high in [('interval_minutes', 30, 10080), ('keep_recent', 2, 96),
-                           ('keep_daily', 0, 90), ('keep_weekly', 0, 52),
-                           ('budget_gib', 5, 80), ('check_days', 1, 30), ('boot_days', 1, 30)]:
+    for key, low, high in [('interval_minutes', 5, 525600),
+                           ('budget_gib', 1, 100000), ('check_days', 1, 365), ('boot_days', 1, 365)]:
         if type(value[key]) is not int or not low <= value[key] <= high:
             raise ValueError(f'Invalid {key}: expected {low}..{high}.')
     return dict(value)
 
 
 def retention(points, policy):
-    """Union of recent points, calendar buckets, pins and last successful boot."""
-    points = sorted(points, key=lambda p: p['created'], reverse=True)
-    keep = {p['id'] for p in points[:policy['keep_recent']]}
-    keep.update(p['id'] for p in points if p.get('pinned'))
-    tested = next((p for p in points if p.get('restoration', {}).get('playable_boot_tested')), None)
-    if tested:
-        keep.add(tested['id'])
-    for key, pattern in [('keep_daily', '%Y-%m-%d'), ('keep_weekly', '%G-%V')]:
-        buckets = set()
-        for point in points:
-            bucket = datetime.fromtimestamp(point['created'], timezone(timedelta(hours=-3))).strftime(pattern)
-            if bucket not in buckets and len(buckets) < policy[key]:
-                buckets.add(bucket)
-                keep.add(point['id'])
-    return [p['id'] for p in points if p['id'] not in keep]
+    """Oldest-first eviction candidates; actual reclaimed bytes decide eviction."""
+    return [p['id'] for p in sorted(points, key=lambda p: p['created'])[:-1]]
 
 
 class Repository:
@@ -123,7 +108,8 @@ class Repository:
         self.write(self.policy_path, {'revision': 1, **DEFAULT_POLICY})
 
     def policy(self):
-        return self.read(self.policy_path, {'revision': 0, **DEFAULT_POLICY})
+        saved = self.read(self.policy_path, {})
+        return {'revision': saved.get('revision', 0), **{k: saved.get(k, v) for k, v in DEFAULT_POLICY.items()}}
 
     def points(self):
         if not self.ready:
@@ -167,13 +153,15 @@ class Repository:
         environment = self.environment(fresh=False) if points else None
         for p in points:
             p['compatible'] = self.compatible(p, environment)
-            p['restorable'] = p['compatible'] and p.get('integrity', False) and not p.get('verification_failed') and not health.get('check_failed') and p.get('manifest', {}).get('includes_runtime', False)
+            # Actual extraction authenticates the selected data before replacement.
+            p['restorable'] = p.get('manifest', {}).get('includes_runtime', False)
         newest = points[0]['created'] if points else None
         return {'ready': self.ready, 'engine': 'restic', 'sampled_at': time.time(), 'backups': points,
                 'policy': policy, 'bytes': used, 'logical_bytes': sum(p['bytes'] for p in points),
-                'free_bytes': shutil.disk_usage(self.runtime.root).free, 'reserve_bytes': 20 * GIB,
-                'next_run': (newest + policy['interval_minutes'] * 60) if newest and policy['enabled'] else None,
-                'health': health, 'external_copy': False, 'prunable': retention(points, policy)}
+                'free_bytes': shutil.disk_usage(self.runtime.root).free, 'reserve_bytes': self.runtime.free_reserve,
+                'next_run': (max(newest or 0, health.get('last_attempt', 0)) + policy['interval_minutes'] * 60) if policy['enabled'] else None,
+                'health': health, 'external_copy': False, 'prunable': retention(points, policy),
+                'recovery_pending': (self.runtime.control / 'restore-pending.json').exists()}
 
     def update_policy(self, params):
         policy = self.policy()
@@ -200,7 +188,41 @@ class Repository:
         self.publish()
         return value
 
-    def capture(self, job, name, progress):
+    def cleanup_recovery(self):
+        """Remove only explicitly completed, expired recovery workspaces."""
+        if (self.runtime.control / 'restore-pending.json').exists():
+            return
+        for name in ('rollback', 'restores', 'discarded'):
+            parent = (self.runtime.control / name).resolve()
+            for folder in parent.glob('*'):
+                if folder.is_symlink() or not folder.is_dir() or not re.fullmatch(r'[a-f0-9-]{36}', folder.name):
+                    continue
+                marker = folder / 'completed.json'
+                if marker.is_file() and self.read(marker, {}).get('at', time.time()) < time.time() - 86400:
+                    if folder.resolve().parent == parent and parent.parent == self.runtime.control.resolve():
+                        shutil.rmtree(folder)
+
+    def content_signature(self, source, root=None):
+        """Ignore empty-server clock/lock churn, but detect world and runtime edits."""
+        from .runtime import sha256
+        from .world_metadata import fingerprint
+        root = root or self.runtime.server
+        cached = self.read(self.runtime.control / 'source-fingerprints.json', {})
+        updated = {}
+        entries = {}
+        for name, metadata in source.items():
+            if name in ('world/level.dat_old', 'world/session.lock'):
+                continue
+            previous = cached.get(name)
+            if previous and previous[:2] == list(metadata):
+                entries[name] = previous[2]
+            else:
+                entries[name] = fingerprint(root / name) if name == 'world/level.dat' else sha256(root / name)
+            updated[name] = [*metadata, entries[name]]
+        self.write(self.runtime.control / 'source-fingerprints.json', updated)
+        return hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()
+
+    def capture(self, job, name, progress, *, automatic=False, activity_at=0, reclaim=True):
         from .runtime import atomic, sha256
         r = self.runtime
         stage = r.control / 'staging' / job
@@ -213,12 +235,19 @@ class Repository:
             with r.legacy_backup_lock():
                 source = r.inventory(r.server)
                 size = sum(v[0] for v in source.values())
-                if size > 20 * GIB:
-                    raise RuntimeError('Source exceeds the 20 GiB capture limit.')
+                signature = self.content_signature(source)
+                previous = self.points()
+                health = self.read(self.health_path, {})
+                environment = self.environment()
+                if (automatic and previous and health.get('last_snapshot') == previous[0]['id'] and signature == health.get('content_signature')
+                        and environment == previous[0].get('manifest', {}).get('environment')
+                        and activity_at <= health.get('activity_at', 0)):
+                    self.measure(last_attempt=time.time(), last_skipped=time.time())
+                    return {'skipped': True, 'reason': 'Sem alterações', 'backup': previous[0]['id']}
+                if reclaim:
+                    self.compact(progress, workspace=size * 2.1)
                 r.require_space(size * 2.1)
                 initial_repository_bytes = self.measure()['bytes']
-                if initial_repository_bytes >= self.policy()['budget_gib'] * GIB:
-                    raise RuntimeError('O repositório atingiu o orçamento. Revise a retenção ou libere espaço.')
                 live = r.active()
                 progress('Salvando mundo', 'Preparing a stable, separate copy.')
                 try:
@@ -266,10 +295,13 @@ class Repository:
                 self.write(self.catalog / (identifier + '.json'), point)
                 # Retention never runs inside a restore's safety capture: its selected
                 # source must remain available until replacement finishes.
-                measured = self.measure(structure_checked=time.time())
+                measured = self.measure(structure_checked=time.time(), last_attempt=time.time(), last_snapshot=identifier,
+                                        content_signature=self.content_signature(source, stage), activity_at=max(activity_at, captured))
                 # restic 0.16 summary data_added is logical, not stored bytes.
                 point['added_bytes'] = max(0, measured['bytes'] - initial_repository_bytes)
                 self.write(self.catalog / (identifier + '.json'), point)
+                if reclaim:
+                    self.compact(progress)
                 return {'backup': identifier, 'sha256': identifier, 'bytes': point['bytes'], 'added_bytes': point['added_bytes'],
                         'duration': point['duration'], 'integrity': True, 'replicated': False}
         finally:
@@ -298,27 +330,39 @@ class Repository:
         return {'backup': point['id'], 'name': point['name'], 'pinned': point['pinned']}
 
     def delete(self, identifier):
-        point, points = self.point(identifier), self.points()
-        tested = next((p for p in points if (p.get('restoration') or {}).get('playable_boot_tested')), None)
-        if point.get('pinned') or points[0]['id'] == identifier or tested and tested['id'] == identifier:
-            raise ValueError('Este ponto está protegido: mais recente, fixado ou último teste bem-sucedido.')
+        self.point(identifier)
         self.command('forget', identifier)
         (self.catalog / (identifier + '.json')).unlink()
+        self.measure(needs_reclaim=True)
         return {'deleted': identifier, 'space_reclaimed': False}
 
-    def compact(self, progress, revision):
-        if revision != self.policy()['revision']:
-            raise ValueError('A retenção mudou. Revise novamente.')
-        self.runtime.require_space(2 * GIB)
-        progress('Conferindo repositório', 'Checking structure before applying retention.')
-        self.command('check')
-        removed = retention(self.points(), self.policy())
-        for identifier in removed:
-            self.delete(identifier)
-        progress('Liberando espaço', 'Repacking unreferenced data with a bounded workspace.')
-        self.command('prune', '--max-repack-size', '1G')
-        self.command('check')
-        return {'removed': len(removed), **self.measure(structure_checked=time.time(), compacted=time.time())}
+    def compact(self, progress, revision=None, workspace=0):
+        """Reclaim on demand, never erase the final automatic recovery point."""
+        self.cleanup_recovery()
+        budget = self.policy()['budget_gib'] * GIB
+        measured = self.measure()
+        removed = 0
+        def pressure():
+            return measured['bytes'] > budget or shutil.disk_usage(self.runtime.root).free < self.runtime.free_reserve + workspace
+        if measured.get('needs_reclaim') or pressure():
+            progress('Liberando espaço', 'Reclaiming unreferenced storage before expiring recovery points.')
+            self.command('prune', '--max-unused', '0', '--max-repack-size', '1G')
+            measured = self.measure(needs_reclaim=False)
+        points = self.points()
+        if pressure() and len(points) > 1 and (measured.get('check_failed') or not points[0].get('integrity')):
+            # Before expiring alternatives, authenticate the point that will remain.
+            with open(os.devnull, 'wb') as sink:
+                self.command('dump', '--archive', 'tar', points[0]['id'], '/', output=sink)
+        while pressure():
+            candidates = retention(self.points(), self.policy())
+            if not candidates:
+                break
+            self.delete(candidates[0])
+            removed += 1
+            self.command('prune', '--max-unused', '0', '--max-repack-size', '1G')
+            measured = self.measure(needs_reclaim=False)
+        return {'removed': removed, **self.measure(compacted=time.time(),
+                capacity_limited=measured['bytes'] > budget)}
 
     def check(self, progress):
         progress('Verificando dados', 'Reading and authenticating every repository pack.')

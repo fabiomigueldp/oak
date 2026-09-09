@@ -5,6 +5,8 @@ implementation is in `admin/` and `public/admin/`. The [blueprint](admin-panel-b
 records the initial investigation and future opportunities, not a list of shipped features.
 External backup storage is deliberately deferred at the owner's request.
 
+Current retention, sessions and administrative behavior: [policy update](admin-policy-update.md). The original operational details below are superseded where that update states a change.
+
 ## Implemented workspaces
 
 | Workspace | Capabilities |

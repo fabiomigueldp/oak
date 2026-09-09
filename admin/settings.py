@@ -11,7 +11,7 @@ class Settings:
     origin: str = 'https://oak.fabiomigueldp.me'
     socket: str = '/run/oak-control/agent.sock'
     demo: bool = False
-    session_seconds: int = 12 * 3600
+    session_seconds: int = 365 * 86400
     poll_seconds: int = 5
 
     def __post_init__(self):
@@ -40,4 +40,5 @@ class Settings:
         demo = os.environ.get('OAK_ADMIN_DEMO') == '1'
         state = Path(os.environ.get('OAK_ADMIN_STATE', '/var/lib/oak-control'))
         origin = os.environ.get('OAK_ADMIN_ORIGIN', 'http://localhost:8092' if demo else 'https://oak.fabiomigueldp.me')
-        return cls(state=state, origin=origin, socket=os.environ.get('OAK_ADMIN_SOCKET', '/run/oak-control/agent.sock'), demo=demo)
+        return cls(state=state, origin=origin, socket=os.environ.get('OAK_ADMIN_SOCKET', '/run/oak-control/agent.sock'), demo=demo,
+                   session_seconds=int(os.environ.get('OAK_ADMIN_SESSION_SECONDS', 365 * 86400)))
