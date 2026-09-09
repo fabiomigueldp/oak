@@ -33,7 +33,7 @@ automatically. Only overworld routes are supported in this release.
 
 ## Implementation
 
-The bird has eight native item displays and 94 cuboids. The real player rides an
+The bird has eight native item displays and 100 cuboids. The real player rides an
 invisible carrier; a separate invisible anchor supplies camera position. Because
 the vanilla client hides its local player with an external camera, an owner-only
 native mannequin renders the passenger's skin and equipment. It is never added to
@@ -41,6 +41,15 @@ the server world, player list or saved data. Observers see the real player. No
 inventory replacement, spectator switch or player-ability change is used.
 Model poses update every two server ticks with native client interpolation.
 The simulation does not run mob AI or scan the whole world.
+
+Version 0.1.2 uses shared, sampled rest/glide/powered-flight clips. The wing cycle
+continues across phase changes; nine-tick exponential blending changes flight
+intensity without snapping to a new pose. The wrist follows the shoulder, feet
+retract with altitude, and head/tail motion is independent of the wing angle.
+Banking pivots around the saddle attachment. Flap audio follows the downstroke and
+stays silent during gliding or boarding. These changes keep the same entity count
+and ten pose updates per second; six joint channels are interpolated from a small
+table loaded once, rather than running a skeletal animation engine.
 
 Routes above 500 horizontal blocks use a fade and relocation near the destination.
 Short routes use a loaded, unobstructed corridor; unavailable corridors use the
@@ -70,11 +79,21 @@ checking the model format, mixins, camera and effect APIs again.
 - [Blender preview](art/condor-preview.png)
 - [Geometry and texture generator](art/build_models.py)
 - [Exported rig](art/condor-rig.json)
+- [Shared motion authoring](art/motion.py)
+- [Runtime motion samples](art/condor-motion.json)
 
 Run Blender with `--background --factory-startup --python aviary/art/build_models.py`.
 This creates a separate scene and exports matching vanilla cuboid models. The
 construction study leaves the front of the deck open, correcting a fence in the
 generated concept. No OBJ/glTF loader or third-party model plugin is required.
+The Blender scene uses the same packed pixel textures, face UV extents and motion
+samples as the resource pack and server rig. Its 20 fps timeline previews one
+powered-flight cycle; the game also blends rest/glide clips according to phase and
+altitude. Lighting is a studio preview, not a simulation of Minecraft lighting.
+Textures use eight texels per world block, directional feather vanes, quieter
+head/beak surfaces and solid pupils; thin feather edges no longer stretch an
+entire 16-pixel tile. A smaller breast/belly silhouette, tapered primary feathers,
+eye highlights and saddle trim complete this pass.
 
 ## Build and install
 
@@ -108,13 +127,16 @@ refuses startup without its isolated-test property and is rejected by the instal
 
 Version 0.1.1 corrects the implicit Y(180 degrees) rotation in the native item
 renderer, which previously folded independently positioned parts into the body.
-The regression runs 712 non-tail cube vertices through the display metadata and
+The regression runs every non-tail cube vertex through the display metadata and
 client render basis. Camera head yaw is synchronized explicitly; the camera
 anchor's distance attribute also keeps the subject in front of the mirrored F5
 view. First person, rear third person and front third person have different
 framing because the vanilla client's F5 setting remains under player control.
 The owner-only mannequin uses the native skin/equipment capabilities documented
 in [Minecraft 1.21.9](https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-9).
+The animation regression also checks a complete boarding/departure/cruise/landing
+sequence through native display matrices: attached wrists, fixed saddle position,
+per-update displacement, deck clearance and the reserved flight envelope.
 
 Actual vanilla-client camera framing, F5 behavior, input, GPU effects, skin/armor
 clearance, chunk delivery under latency, and Bedrock coexistence still need an

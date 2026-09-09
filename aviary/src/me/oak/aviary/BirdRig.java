@@ -20,6 +20,8 @@ import java.util.*;
 public final class BirdRig {
     private record Part(String name,Vec3 pivot,Display.ItemDisplay entity) {}
     private final List<Part> parts=new ArrayList<>();
+    private final Map<String,Part> byName=new HashMap<>();
+    private final BirdMotion motion=new BirdMotion();
     public BirdRig(ServerLevel level,Vec3 position) {
         try(var reader=new InputStreamReader(Objects.requireNonNull(getClass().getResourceAsStream("/condor-rig.json")),java.nio.charset.StandardCharsets.UTF_8)) {
             var json=JsonParser.parseReader(reader).getAsJsonObject();
@@ -34,7 +36,7 @@ public final class BirdRig {
                 entity.getSlot(0).set(item);
                 var access=(DisplayAccess)entity;access.aviary$duration(2);access.aviary$positionDuration(2);
                 if(!level.addFreshEntity(entity))throw new IllegalStateException("Could not create bird model");
-                parts.add(new Part(entry.getKey(),pivot,entity));
+                Part part=new Part(entry.getKey(),pivot,entity);parts.add(part);byName.put(part.name(),part);
             }
             pose(position,0,0,0);
         } catch(Exception e){close();throw new IllegalStateException("Bird rig unavailable",e);}
@@ -43,21 +45,28 @@ public final class BirdRig {
         pose(origin,yaw,wing,wing*.18,bank);
     }
     public void pose(Vec3 origin,float yaw,double wing,double tip,double bank) {
+        pose(origin,yaw,wing,tip,bank,0,-.05+wing*.10,0);
+    }
+    private void pose(Vec3 origin,float yaw,double wing,double tip,double bank,double head,double tail,double feet) {
         Quaternionf direction=new Quaternionf().rotationY((float)Math.toRadians(180-yaw));
+        Quaternionf body=new Quaternionf(direction).rotateZ((float)bank);
+        Vector3f seat=new Vector3f(0,1.47f,.18f);
         for(Part part:parts) {
             Quaternionf joint=new Quaternionf();
             int sign=part.name().startsWith("left")?-1:1;
             if(part.name().contains("wing"))joint.rotationZ((float)(sign*wing));
             if(part.name().contains("tip"))joint.rotationZ((float)(sign*(wing+tip)));
-            if(part.name().equals("tail"))joint.rotationX((float)(-.05+wing*.10));
+            if(part.name().equals("tail"))joint.rotationX((float)tail);
+            if(part.name().equals("head"))joint.rotationX((float)head);
+            if(part.name().equals("feet"))joint.rotationX((float)feet);
             Vector3f local=new Vector3f((float)part.pivot().x,(float)part.pivot().y,(float)part.pivot().z);
             if(part.name().contains("tip")) {
-                Part upper=parts.stream().filter(p->p.name().equals(part.name().replace("tip","wing"))).findFirst().orElseThrow();
+                Part upper=byName.get(part.name().replace("tip","wing"));
                 Vector3f hinge=new Vector3f((float)upper.pivot().x,(float)upper.pivot().y,(float)upper.pivot().z);
                 local.sub(hinge).rotate(new Quaternionf().rotationZ((float)(sign*wing))).add(hinge);
             }
-            Quaternionf body=new Quaternionf(direction).rotateZ((float)bank);
-            Vector3f offset=body.transform(local);
+            // Roll around the saddle, rather than pulling it away from the rider.
+            Vector3f offset=local.sub(seat).rotate(new Quaternionf().rotationZ((float)bank)).add(seat).rotate(direction);
             Quaternionf rotation=new Quaternionf(body).mul(joint);
             // The native ItemDisplayRenderer appends Y(pi) before rendering the
             // item mesh. Cancel it locally; pivot translations must stay intact.
@@ -66,14 +75,11 @@ public final class BirdRig {
             part.entity().setPos(origin.x,origin.y,origin.z);
         }
     }
-    void animate(Vec3 origin,float yaw,int tick,String phase) {
-        double cycle=tick*.18;
-        boolean resting=phase.equals("board");
-        double power=phase.equals("cruise")?Math.pow(Math.max(0,Math.sin(tick*Math.PI/100)),6):1;
-        double amplitude=resting?.025:.09+.38*power;
-        double wing=.06+Math.sin(cycle)*amplitude;
-        double tip=.06+Math.sin(cycle-.65)*amplitude*.45;
-        pose(origin,yaw,wing,tip,resting?0:Math.sin(tick*.035)*.025);
+    boolean animate(Vec3 origin,float yaw,int tick,String phase,double clearance) {
+        boolean downstroke=motion.update(tick,phase,clearance);
+        double[] a=motion.angles;
+        pose(origin,yaw,a[0],a[1],a[5],a[2],a[3],a[4]);
+        return downstroke;
     }
-    public void close(){for(Part part:parts)part.entity().discard();parts.clear();}
+    public void close(){for(Part part:parts)part.entity().discard();parts.clear();byName.clear();}
 }

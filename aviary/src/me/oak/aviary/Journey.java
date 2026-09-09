@@ -127,10 +127,12 @@ final class Journey {
             journal.join();for(var f:loads)f.join();
             if(!clearPort(level,origin)||!clearPort(level,destination))throw new IllegalStateException("A landing area is obstructed");
             shortcut=!planFullRoute();bird=new BirdRig(level,current.add(0,12,0));carrier=anchor(current);camera=anchor(current.add(7,3,7));
+            bird.animate(current.add(0,12,0),yaw,age,"call",12);
             next("call");
         } else if(phase.equals("call")) {
             if(player.position().distanceTo(position(origin))>6){abort("Flight cancelled. Stay at the aviport to board.");return;}
-            if(age%2==0)bird.animate(position(origin).add(0,12*(1-FlightPath.ease(phaseTick/50.0)),0),yaw,age,"call");
+            double height=12*(1-FlightPath.ease(phaseTick/50.0));
+            if(age%2==0)bird.animate(position(origin).add(0,height,0),yaw,age,"call",height);
             if(phaseTick<50&&!skip)return;
             current=position(origin);
             player.teleportTo(level,current.x,current.y,current.z,Set.of(),yaw,0,true);
@@ -160,6 +162,7 @@ final class Journey {
             current=position(destination).add(0,18,0);
             player.teleportTo(level,current.x,current.y,current.z,Set.of(),yaw,0,true);
             carrier=anchor(current);camera=anchor(current.add(7,3,7));bird=new BirdRig(level,current);
+            bird.animate(current,yaw,age,"arrival-load",18);
             if(!player.startRiding(carrier,true,true))throw new IllegalStateException("Could not resume flight");next("arrival-load");
         } else if(phase.equals("arrival-load")) {
             move(current);
@@ -188,9 +191,11 @@ final class Journey {
         Vec3 aim=target.add(0,2.0,0).subtract(eye);
         camera.setPos(eye.subtract(0,camera.getEyeHeight(),0));camera.setYRot((float)(Math.toDegrees(Math.atan2(aim.z,aim.x))-90));camera.setXRot((float)-Math.toDegrees(Math.atan2(aim.y,Math.hypot(aim.x,aim.z))));
         camera.setYHeadRot(camera.getYRot());
-        if(age%2==0)bird.animate(target,yaw,age,phase);
+        double clearance=phase.equals("board")||phase.equals("depart")?target.y-origin.y()
+            :phase.equals("arrive")?target.y-destination.y():18;
+        if(age%2==0&&bird.animate(target,yaw,age,phase,clearance))
+            level.playSound(null,carrier.blockPosition(),net.minecraft.sounds.SoundEvents.ENDER_DRAGON_FLAP,net.minecraft.sounds.SoundSource.NEUTRAL,.12f,1.65f);
         if(passenger!=null&&age%10==0)passenger.updateEquipment();
-        if(age%40==0&&!phase.equals("board"))level.playSound(null,carrier.blockPosition(),net.minecraft.sounds.SoundEvents.ENDER_DRAGON_FLAP,net.minecraft.sounds.SoundSource.NEUTRAL,.18f,1.6f);
     }
     private void setFade(int value){setFade(value,false);}
     private void setFade(int value,boolean force) {

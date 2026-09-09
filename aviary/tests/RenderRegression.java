@@ -48,6 +48,55 @@ final class RenderRegression {
                 }
                 if(checked<600)throw new AssertionError("Missing model vertices: "+checked);
                 System.out.println("AVIARY_SMOKE native render basis: "+checked+" vertices passed");
+                var displays=new java.util.HashMap<String,Display.ItemDisplay>();
+                for(var part:(java.util.List<?>)partsField.get(rig)) {
+                    var method=part.getClass().getDeclaredMethod("entity");method.setAccessible(true);
+                    var display=(Display.ItemDisplay)method.invoke(part);
+                    displays.put(display.getSlot(0).get().get(DataComponents.ITEM_MODEL).getPath(),display);
+                }
+                var previous=new java.util.HashMap<String,Vector3f>();
+                int animated=0;
+                for(int tick=0;tick<680;tick+=2) {
+                    String phase=tick<80?"board":tick<160?"depart":tick<520?"cruise":tick<600?"arrive":"board";
+                    double height=phase.equals("depart")?18*FlightPath.ease((tick-80)/80.0)
+                        :phase.equals("arrive")?18*(1-FlightPath.ease((tick-520)/80.0)):phase.equals("board")?0:18;
+                    rig.animate(new Vec3(0,80+height,0),180,tick,phase,height);
+                    var matrices=new java.util.HashMap<String,Matrix4f>();
+                    for(var entry:displays.entrySet()) {
+                        var transform=(Transformation)read.invoke(null,entry.getValue().getEntityData());
+                        matrices.put(entry.getKey(),new Matrix4f(transform.getMatrix()).rotateY((float)Math.PI));
+                    }
+                    var seat=matrices.get("body").transformPosition(new Vector3f(0,1.47f/4,.18f/4));
+                    if(seat.distance(new Vector3f(0,1.47f,.18f))>.0001)throw new AssertionError("Saddle moved away from passenger");
+                    for(String side:new String[]{"left","right"}) {
+                        var upper=rigData.getAsJsonObject(side+"_wing").getAsJsonArray("pivot");
+                        var tip=rigData.getAsJsonObject(side+"_tip").getAsJsonArray("pivot");
+                        var wrist=new Vector3f();
+                        for(int a=0;a<3;a++)wrist.setComponent(a,(tip.get(a).getAsFloat()-upper.get(a).getAsFloat())/4);
+                        matrices.get(side+"_wing").transformPosition(wrist);
+                        if(wrist.distance(matrices.get(side+"_tip").transformPosition(new Vector3f()))>.0001)
+                            throw new AssertionError("Detached wing joint: "+side);
+                    }
+                    for(var entry:matrices.entrySet()) {
+                        int cubeIndex=0;
+                        for(var element:rigData.getAsJsonObject(entry.getKey()).getAsJsonArray("cubes")) {
+                            var cube=element.getAsJsonObject();var center=cube.getAsJsonArray("center");var size=cube.getAsJsonArray("size");
+                            for(int corner=0;corner<8;corner++) {
+                                var point=new Vector3f();
+                                for(int a=0;a<3;a++)point.setComponent(a,(center.get(a).getAsFloat()+size.get(a).getAsFloat()*(((corner>>a)&1)==0?-.5f:.5f))/4);
+                                entry.getValue().transformPosition(point);
+                                if(!Float.isFinite(point.y)||point.y+height<-.035||point.y>4||Math.abs(point.x)>4||Math.abs(point.z)>4)
+                                    throw new AssertionError("Model left the clear flight envelope: "+entry.getKey()+" at "+tick+" "+point);
+                                String key=entry.getKey()+":"+cubeIndex+":"+corner;
+                                var last=previous.put(key,point);
+                                if(last!=null&&last.distance(point)>.8)throw new AssertionError("Abrupt joint motion: "+key+" at "+tick);
+                                animated++;
+                            }
+                            cubeIndex++;
+                        }
+                    }
+                }
+                System.out.println("AVIARY_SMOKE animation: "+animated+" vertices, attached wrists, fixed saddle and clear deck passed");
             } finally {rig.close();}
         }
     }
