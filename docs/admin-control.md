@@ -130,47 +130,12 @@ the two administrative services. Keep the start guard and database. Schema v1 is
 additive; review migration compatibility before running older code against any
 future schema. Website rollback remains independent.
 
-## Local backup contract
+## Unified backup contract
 
-New checkpoints live in `/srv/oak/control/backups`, separate from the existing
-`/srv/oak/backups` routine. Oak takes the existing backup lock as well. For an
-online game, it persists save-disabled intent, disables saving, requires a
-confirmed `save-all flush`, copies the approved inventory and checks that the
-source matches the staged copy. Background chunk/entity writes observed on the
-live 26.3-pre-2 server can continue after the flush. The copier reconciles changed
-files across at most eight passes and a 120-second saving budget. It requires a
-stable complete inventory before accepting the checkpoint; continuously changing
-inputs fail closed. Saving is re-enabled in `finally`, before compression.
-A persistent marker and systemd stop hook cover agent failure. This captures
-Minecraft's flushed world; it cannot guarantee transactions in arbitrary future
-mods with external databases.
-
-Inventory includes world, mods/config, launchers, libraries/versions/Fabric,
-properties, EULA and access lists. All remain outside Git and public directories.
-Budgets: 20 GiB source, 40 GiB expanded archive, one million archive entries,
-20 GiB reserved free disk. Retention keeps at most 14 Oak checkpoints within a
-20 GiB archive budget and prunes only after a new verified checkpoint. The newest
-point is always kept and can alone exceed the archive budget. Legacy archives
-have their own policy and are never pruned by this application.
-
-| Evidence | What was actually checked |
-| --- | --- |
-| Integrity | Full gzip/tar read and SHA-256 at creation; invalidated on size/mtime change; SHA recomputed before restoration |
-| Extraction | Safe paths/types/quotas, isolated extraction and compressed NBT compound header in world/level.dat |
-| Boot | Restored Fabric answers RCON and exits cleanly in a private network namespace |
-
-Extraction is not full semantic validation of all world chunks. A boot test
-needs the archived runtime and at least 4 GiB available host memory; it is capped
-at 3 GiB, 50% CPU and 240 seconds. It cannot reach production ports/chat. Archived
-mods execute under the existing game identity with a read-only system and writable
-isolated copy. This supports owner-controlled backups, not hostile uploads;
-there is no archive upload route. There is no off-Oracle copy.
-
-Failed boot diagnostics are retained under `control/drill-reports/<job>.log`,
-with root-only permissions and a bounded log tail. They may contain private
-runtime data; inspect them through SSH and never publish or commit them. The
-launcher records the host network namespace before dropping privileges, and the
-drill checks its own namespace against that identity before starting Java.
+See [Unified backups](backups.md) for the production engine, policy, retention,
+verification evidence, migration and recovery limits. New captures use an
+incremental, encrypted restic repository. The panel owns the single schedule;
+legacy archives remain readable only until the explicit migration cleanup.
 
 ## Restoration and interrupted recovery
 

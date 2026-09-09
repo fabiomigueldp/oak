@@ -86,6 +86,8 @@ class AgentHandler(socketserver.StreamRequestHandler):
                 result = runtime.environment()
             elif method == 'backups':
                 result = runtime.backups()
+            elif method == 'backup_status':
+                result = runtime.backup_status()
             elif method == 'configuration':
                 result = runtime.configuration()
             elif method == 'logs':

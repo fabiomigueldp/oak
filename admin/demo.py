@@ -12,6 +12,8 @@ from .store import encode
 
 class DemoAgent:
     def __init__(self):
+        from .backup_repository import DEFAULT_POLICY
+        self.backup_policy = {'revision': 1, **DEFAULT_POLICY, 'enabled': True}
         self.started = time.time()
         self.online = True
         self.pending_restart = False
@@ -26,6 +28,11 @@ class DemoAgent:
         for age, name, tested in ((1800, 'Antes da nova trilha', True), (7200, 'Rotina da manhã', False), (86400, 'Primeiras construções', True)):
             identifier = 'control-' + str(uuid.uuid4()) + '.tar.gz'
             self.points.append({'id': identifier, 'name': name, 'created': self.started - age, 'bytes': 687 * 1024 * 1024, 'source': 'oak', 'integrity': True, 'restoration': {'at': self.started - age + 60, 'level': 'boot' if tested else 'extraction', 'playable_boot_tested': tested}, 'replicated': False, 'fingerprint': hashlib.sha256(identifier.encode()).hexdigest(), 'manifest': {'versions': ['26.3-pre-2'], 'method': 'flush-and-stable-copy'}})
+        for index, point in enumerate(self.points):
+            point.update(id=point['fingerprint'], source='repository', compatible=True, restorable=True,
+                         added_bytes=(24 if index < 2 else 520)*1024**2, duration=31+index*9, pinned=index == 2)
+            point['manifest'].update(versions=['26.3-pre-3'], includes_runtime=True)
+            point['restoration']['boot_seconds'] = 74
 
     def snapshot(self):
         now = time.time()
@@ -46,6 +53,12 @@ class DemoAgent:
             return self.snapshot()
         if method == 'backups':
             return copy.deepcopy(self.points)
+        if method == 'backup_status':
+            return {'ready': True, 'engine': 'restic', 'sampled_at': time.time(), 'backups': copy.deepcopy(self.points),
+                    'policy': dict(self.backup_policy), 'bytes': 568*1024**2,
+                    'logical_bytes': sum(p['bytes'] for p in self.points), 'free_bytes': 157*1024**3,
+                    'reserve_bytes': 20*1024**3, 'next_run': self.points[0]['created']+self.backup_policy['interval_minutes']*60 if self.points else None,
+                    'health': {'data_checked': self.started-3600, 'compacted': self.started}, 'prunable': [], 'external_copy': False}
         if method == 'configuration':
             return self.configuration()
         if method == 'environment':
@@ -72,6 +85,9 @@ class DemoAgent:
                 preview['changes'] = environment_changes(self.environment_state, params)
             if kind == 'console':
                 preview['command'] = params['command']
+            if kind == 'restore_backup':
+                point = next(p for p in self.points if p['id'] == params['backup'])
+                preview.update(point_name=point['name'], version='26.3-pre-3')
             return preview
         if method == 'execute':
             jid, kind = data['job'], data['kind']
@@ -83,7 +99,17 @@ class DemoAgent:
                     progress(step, 'Local demonstration. No production effect.')
                 time.sleep(.3)
             result = {'demonstration': True}
-            if kind == 'environment_apply':
+            if kind == 'backup_policy':
+                if params['revision'] != self.backup_policy['revision']:
+                    raise ValueError('A política mudou. Atualize antes de salvar.')
+                self.backup_policy = {'revision': params['revision'] + 1, **params['policy']}
+                result.update(self.backup_policy)
+            elif kind == 'backup_edit':
+                point = next(p for p in self.points if p['id'] == params['backup'])
+                point.update({k:v for k,v in params.items() if k != 'backup'})
+            elif kind == 'backup_delete':
+                self.points = [p for p in self.points if p['id'] != params['backup']]
+            elif kind == 'environment_apply':
                 env = self.environment_state
                 if params['revision'] != env['revision']:
                     raise ValueError('Environment changed after review.')
@@ -102,6 +128,11 @@ class DemoAgent:
             elif kind in ('backup', 'maintenance'):
                 identifier = 'control-' + jid + '.tar.gz'
                 self.points.insert(0, {'id': identifier, 'name': params.get('name', 'Antes da manutenção'), 'created': time.time(), 'bytes': 689 * 1024 * 1024, 'source': 'oak', 'integrity': True, 'restoration': None, 'replicated': False, 'fingerprint': hashlib.sha256(identifier.encode()).hexdigest(), 'manifest': {'versions': ['26.3-pre-2']}})
+                point = self.points[0]
+                point.update(id=point['fingerprint'], source='repository', compatible=True, restorable=True,
+                             added_bytes=18*1024**2, duration=28, pinned=False, restoration={})
+                point['manifest'].update(versions=['26.3-pre-3'], includes_runtime=True)
+                identifier = point['id']
                 result['backup'] = identifier
                 self.last_save = time.time()
             elif kind == 'verify_backup':

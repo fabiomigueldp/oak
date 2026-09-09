@@ -24,6 +24,7 @@ def main():
     sub.add_parser('recover-restore')
     sub.add_parser('guard-start')
     sub.add_parser('doctor')
+    sub.add_parser('backup')
     args = parser.parse_args()
     if args.command == 'demo':
         os.environ['OAK_ADMIN_DEMO'] = '1'
@@ -40,6 +41,10 @@ def main():
         token = Store(settings.state / 'control.sqlite3').invite(clean_text(args.name, 60, 1), args.role)
         print('One-use enrollment link. Expires in 15 minutes. Keep it private:')
         print(settings.origin + '/admin/#enroll=' + token)
+    elif args.command == 'backup':
+        import uuid
+        job = Store(Settings.from_env().state / 'control.sqlite3').create_job('backup-policy', 'backup', 'Backup via SSH', {'name': 'Manual via SSH'}, 'ssh:' + uuid.uuid4().hex)
+        print(json.dumps({'job': job['id'], 'state': job['state']}))
     elif args.command == 'doctor':
         from .agent import AgentClient
         agent = AgentClient(Settings.from_env().socket)

@@ -18,6 +18,13 @@ while True:
         data={'updated':time.time(),'online':bool(match),'players':players,'maxPlayers':int(match[2]) if match else 12,'version':'26.3-pre-3','chat':messages[-60:],'disk':{'used':disk.used,'total':disk.total,'free':disk.free},'backup':{'last':backups[-1].stat().st_mtime if backups else None,'count':len(backups),'bytes':sum(p.stat().st_size for p in backups)},'warnings':[]}
         if disk.free<30*1024**3: data['warnings'].append('Pouco espaço livre na VM')
         if not backups or time.time()-backups[-1].stat().st_mtime>27*3600: data['warnings'].append('Backup atrasado')
+        unified = ROOT/'control/backup-public.json'
+        if unified.exists():
+            evidence = json.loads(unified.read_text())
+            data['backup'] = evidence
+            data['warnings'] = [w for w in data['warnings'] if w != 'Backup atrasado']
+            if evidence.get('enabled') and (not evidence.get('last') or time.time()-evidence['last'] > evidence['interval_minutes']*60+1800):
+                data['warnings'].append('Backup atrasado')
         if (PUBLIC/'map-warning.json').exists(): data['warnings'].append('Mapa pausado para preservar armazenamento')
         tmp=PUBLIC/'status.tmp'; tmp.write_text(json.dumps(data,ensure_ascii=False)); tmp.chmod(0o644); tmp.replace(PUBLIC/'status.json')
     except Exception as e:

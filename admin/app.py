@@ -366,7 +366,10 @@ def create_app(settings=None, agent=None, *, background=True):
         current(request)
         points = await asyncio.to_thread(agent.call, 'backups')
         store.set('backups', points)
-        return {'backups': points, 'policy': {'location': 'Oracle VM', 'external_copy': False, 'max_points': 14, 'budget_bytes': 20 * 1024 ** 3, 'free_reserve_bytes': 20 * 1024 ** 3, 'legacy_managed_separately': True}}
+        status = await asyncio.to_thread(agent.call, 'backup_status')
+        status['backups'] = points
+        status['jobs'] = [j for j in visible_jobs(current(request)) if j['kind'] in ('backup', 'verify_backup', 'restore_backup') or j['kind'].startswith('backup_')][:12]
+        return status
 
     @app.get(API + '/environment')
     async def environment(request: Request):
@@ -426,6 +429,8 @@ def create_app(settings=None, agent=None, *, background=True):
         params = validate(kind, data.get('params', {}), user['role'])
         if not OPERATIONS[kind]['schedule']:
             raise ValueError('This action cannot run unattended.')
+        if kind == 'backup':
+            raise ValueError('Configure a rotina única na página Backups.')
         minutes = data.get('interval_minutes')
         if type(minutes) is not int or not 15 <= minutes <= 10080:
             raise ValueError('Choose an interval between 15 minutes and 7 days.')
@@ -509,4 +514,6 @@ def create_app(settings=None, agent=None, *, background=True):
         return FileResponse(STATIC / 'index.html')
 
     app.mount('/admin/assets', StaticFiles(directory=STATIC, check_dir=False), name='admin-assets')
+    if settings.demo:
+        app.mount('/brand', StaticFiles(directory=STATIC.parent / 'brand'), name='demo-brand')
     return app

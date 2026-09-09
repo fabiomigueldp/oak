@@ -273,7 +273,12 @@ class Runtime:
                 if checked and (checked.get('size') != stat.st_size or checked.get('mtime_ns') != stat.st_mtime_ns):
                     checked = None
                 items.append({'id': path.name, 'name': meta.get('name', 'Backup do servidor'), 'created': meta.get('created', stat.st_mtime), 'bytes': stat.st_size, 'source': 'oak' if directory == self.backups_dir else 'existing', 'integrity': bool(meta.get('sha256') or checked), 'restoration': checked, 'replicated': False, 'manifest': meta.get('manifest'), 'fingerprint': meta.get('sha256') or (checked or {}).get('sha256')})
-        return sorted(items, key=lambda item: item['created'], reverse=True)
+        from .backup_repository import Repository
+        return sorted(items + Repository(self).status()['backups'], key=lambda item: item['created'], reverse=True)
+
+    def backup_status(self):
+        from .backup_repository import Repository
+        return Repository(self).status()
 
     def backup_path(self, name):
         if not isinstance(name, str) or not BACKUP.fullmatch(name):
@@ -334,6 +339,10 @@ class Runtime:
         raise RuntimeError('Source files did not settle within the consistent-copy budget. Retry at a quieter time.')
 
     def backup(self, job, name, progress):
+        from .backup_repository import Repository
+        repository = Repository(self)
+        if repository.ready:
+            return repository.capture(job, name, progress)
         target = self.backups_dir / ('control-' + job + '.tar.gz')
         if target.exists():
             raise RuntimeError('This operation already created an archive; inspect its receipt.')
@@ -398,7 +407,7 @@ class Runtime:
     def inspect_archive(self, path, destination=None):
         total, files, seen, has_level = 0, 0, set(), False
         allowed = set(INCLUDED) | {'oak-manifest.json'}
-        with tarfile.open(path, 'r:gz') as archive:
+        with tarfile.open(path, 'r:*') as archive:
             for member in archive:
                 name = PurePosixPath(member.name)
                 if name.is_absolute() or '\\' in member.name or '..' in name.parts or not name.parts or name.parts[0] not in allowed or ':' in member.name:
@@ -429,9 +438,10 @@ class Runtime:
         if not has_level:
             raise ValueError('Archive is missing world/level.dat.')
         # Tar EOF is earlier than gzip EOF; read the latter to validate its CRC.
-        with gzip.open(path, 'rb') as file:
-            while file.read(1024 * 1024):
-                pass
+        if path.suffix != '.tar':
+            with gzip.open(path, 'rb') as file:
+                while file.read(1024 * 1024):
+                    pass
         if destination is not None:
             for directory in sorted((p for p in destination.rglob('*') if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
                 sync_directory(directory)
@@ -439,7 +449,29 @@ class Runtime:
         return {'files': files, 'expanded_bytes': total, 'includes_runtime': 'fabric-server-launch.jar' in seen and 'server.properties' in seen and any(name.startswith('libraries/') for name in seen)}
 
     def verify_backup(self, job, name, progress, boot=False):
+        from .backup_repository import Repository, SNAPSHOT
+        if SNAPSHOT.fullmatch(name):
+            repository = Repository(self)
+            try:
+                with repository.archive(name) as path:
+                    result = self.verify_archive(job, name, path, progress, boot)
+            except Exception:
+                point = repository.point(name)
+                point['verification_failed'] = {'at': time.time(), 'boot': boot}
+                repository.write(repository.catalog / (name + '.json'), point)
+                raise
+            point = repository.point(name)
+            if not boot and point.get('restoration', {}).get('playable_boot_tested'):
+                point['restoration']['extraction_checked_at'] = result['at']
+            else:
+                point['restoration'] = {**result, 'sha256': name}
+            point.pop('verification_failed', None)
+            repository.write(repository.catalog / (name + '.json'), point)
+            return point['restoration']
         path = self.backup_path(name)
+        return self.verify_archive(job, name, path, progress, boot)
+
+    def verify_archive(self, job, name, path, progress, boot=False):
         progress('Inspecionando arquivo', 'Checking supported paths, file types and recovery budget.')
         summary = self.inspect_archive(path)
         self.require_space(summary['expanded_bytes'])
@@ -473,6 +505,7 @@ class Runtime:
                 arguments = ['systemd-run', '--quiet', '--wait', '--pipe', '--collect', '--unit=oak-drill-' + job,
                               '--property=User=oak', '--property=Group=oak', '--property=PrivateNetwork=yes',
                               '--property=NoNewPrivileges=yes', '--property=ProtectSystem=strict', '--property=ProtectHome=yes', '--property=PrivateTmp=yes',
+                              '--property=InaccessiblePaths=-/srv/oak/server -/srv/oak/crossplay -/run/oak-telemetry',
                               '--property=MemoryMax=3G', '--property=CPUQuota=50%', '--property=RuntimeMaxSec=240',
                               '--property=ReadWritePaths=' + str(stage), '--property=WorkingDirectory=' + str(stage),
                               '/usr/bin/python3', str(runner), str(stage), str(Path('/proc/1/ns/net').readlink())]
@@ -521,6 +554,20 @@ class Runtime:
             if params['action'] != 'configure':
                 result['impact'] = ('O clima será alterado temporariamente e depois retomará o perfil ativo.' if params['action'] == 'override' else 'A intervenção temporária será encerrada e o perfil ativo será retomado.')
         elif kind == 'restore_backup':
+            from .backup_repository import Repository, SNAPSHOT
+            if SNAPSHOT.fullmatch(params['backup']):
+                repository = Repository(self)
+                point = repository.point(params['backup'])
+                if params['fingerprint'] != point['id'] or not point['integrity']:
+                    raise ValueError('Verifique o ponto antes de restaurar.')
+                if repository.read(repository.health_path, {}).get('check_failed'):
+                    raise ValueError('Resolva a falha de verificação do repositório antes de restaurar.')
+                if not repository.compatible(point) or not point['manifest']['includes_runtime']:
+                    raise ValueError('Os componentes externos mudaram. Esta recuperação exige revisão pelo operador.')
+                result.update(impact='O mundo, mods e configurações serão substituídos. Jogadores serão desconectados.',
+                              point_name=point['name'], version=point['manifest'].get('version'),
+                              steps=['Criar ponto de segurança', 'Verificar e extrair a cópia', 'Pausar o jogo e restaurar', 'Validar inicialização e retomar rotinas'])
+                return result
             path = self.backup_path(params['backup'])
             fingerprint = sha256(path)
             if fingerprint != params['fingerprint']:
@@ -540,6 +587,16 @@ class Runtime:
             result.update(impact='A ação será aplicada ao jogador ' + params['player'] + '.', steps=['Verificar a identidade selecionada', 'Aplicar ' + params['action'], 'Registrar a resposta'])
         elif kind in ('server_control', 'maintenance'):
             result.update(impact='Jogadores podem ser desconectados durante esta operação.', steps=['Preservar o progresso', 'Executar a mudança de estado solicitada', 'Verificar o estado observado'])
+        elif kind == 'backup_delete':
+            from .backup_repository import Repository
+            point = Repository(self).point(params['backup'])
+            result.update(impact='O ponto “' + point['name'] + '” será excluído permanentemente.', steps=['Conferir proteção do ponto', 'Remover referência do repositório'])
+        elif kind == 'backup_compact':
+            from .backup_repository import Repository
+            status = Repository(self).status()
+            if params['revision'] != status['policy']['revision']:
+                raise ValueError('A retenção mudou. Atualize antes de revisar.')
+            result.update(impact=f"{len(status['prunable'])} pontos fora da retenção serão excluídos. Pontos protegidos serão preservados.", steps=['Verificar repositório', 'Aplicar política atual', 'Liberar blocos sem uso'])
         return result
 
     def apply_settings(self, job, params, progress):
@@ -568,8 +625,21 @@ class Runtime:
         return {'revision': sha256(path), 'changes': params['changes'], 'restart_required': True}
 
     def restore(self, job, params, progress):
+        from .backup_repository import Repository, SNAPSHOT
+        if SNAPSHOT.fullmatch(params['backup']):
+            repository = Repository(self)
+            point = repository.point(params['backup'])
+            if params['fingerprint'] != point['id'] or not point['integrity'] or not repository.compatible(point):
+                raise ValueError('O ponto ou os componentes externos mudaram. Revise a recuperação.')
+            if repository.read(repository.health_path, {}).get('check_failed'):
+                raise ValueError('Resolva a falha de verificação do repositório antes de restaurar.')
+            with repository.archive(point['id']) as path:
+                return self.restore_archive(job, params, path, progress, snapshot=True)
         path = self.backup_path(params['backup'])
-        if sha256(path) != params['fingerprint']:
+        return self.restore_archive(job, params, path, progress)
+
+    def restore_archive(self, job, params, path, progress, snapshot=False):
+        if not snapshot and sha256(path) != params['fingerprint']:
             raise ValueError('Recovery point changed after review.')
         summary = self.inspect_archive(path)
         if not summary['includes_runtime']:
@@ -717,6 +787,19 @@ class Runtime:
             if (self.control / 'restore-pending.json').exists():
                 raise RuntimeError('An interrupted restoration needs operator recovery before further world operations.')
             self.recover_saving()
+            if kind.startswith('backup_'):
+                from .backup_repository import Repository
+                repository = Repository(self)
+                if kind == 'backup_policy':
+                    return repository.update_policy(params)
+                if kind == 'backup_edit':
+                    return repository.annotate(params)
+                if kind == 'backup_delete':
+                    return repository.delete(params['backup'])
+                if kind == 'backup_check':
+                    return repository.check(progress)
+                if kind == 'backup_compact':
+                    return repository.compact(progress, params['revision'])
             if kind == 'environment_apply':
                 progress('Aplicando ambiente', 'Persisting the reviewed policy through the private control socket.')
                 return environment_call({**params, 'id': job})

@@ -54,6 +54,7 @@ def install(sha):
     run('/usr/bin/python3', '-m', 'venv', str(release / '.venv'))
     run(str(release / '.venv/bin/pip'), 'install', '--disable-pip-version-check', '-r', str(release / 'requirements-admin.txt'), timeout=600)
     run(str(release / '.venv/bin/python'), str(ROOT / 'tests/test_admin.py'))
+    run(str(release / '.venv/bin/python'), str(ROOT / 'tests/test_backup_repository.py'))
     for directory, mode in ((Path('/var/lib/oak-control'), 0o700), (Path('/srv/oak/control'), 0o700)):
         directory.mkdir(parents=True, exist_ok=True, mode=mode)
         directory.chmod(mode)

@@ -61,7 +61,10 @@ def main(directory, host_namespace):
     config_path.write_text('\n'.join(k + '=' + v for k, v in config.items()) + '\n')
     started = time.monotonic()
     with (root / 'drill-output.log').open('wb') as output:
-        process = subprocess.Popen(['/usr/bin/java', '-Xms256M', '-Xmx2G', '-jar', 'fabric-server-launch.jar', '--nogui'], cwd=root, stdout=output, stderr=subprocess.STDOUT)
+        process = subprocess.Popen(['/usr/bin/java', '-Xms256M', '-Xmx2G',
+                                    '-Doak.telemetry.socket=' + str(root / 'positions.sock'),
+                                    '-Doak.environment.socket=' + str(root / 'environment.sock'),
+                                    '-jar', 'fabric-server-launch.jar', '--nogui'], cwd=root, stdout=output, stderr=subprocess.STDOUT)
         try:
             while time.monotonic() - started < 180:
                 if process.poll() is not None:

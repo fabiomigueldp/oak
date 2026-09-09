@@ -43,6 +43,7 @@ class Worker:
         while not self.stop.is_set():
             try:
                 self.store.tick_schedules()
+                self.store.tick_backups()
                 job = self.store.claim()
                 if not job:
                     self.stop.wait(1)
@@ -69,6 +70,7 @@ class Worker:
                 self.store.sample(snapshot)
                 if time.time() - last_extra > 20:
                     self.store.set('backups', self.agent.call('backups'))
+                    self.store.set('backup_status', self.agent.call('backup_status'))
                     self.store.set('configuration', self.agent.call('configuration'))
                     last_extra = time.time()
                 for job in self.store.rows("SELECT id FROM jobs WHERE state='interrupted' ORDER BY created DESC LIMIT 5"):

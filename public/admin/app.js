@@ -1,3 +1,4 @@
+import { renderBackups as renderRecovery, backupUpdated } from "./backups.js?v=1";
 import { renderEnvironment } from "./environment.js";
 import {
   PAGES,
@@ -309,7 +310,7 @@ async function operation(kind, params = {}, { onQueued } = {}) {
       }),
     );
   if (kind === "restore_backup")
-    content.append(facts({ "Arquivo selecionado": params.backup }));
+    content.append(facts({ "Ponto": review.point_name || params.backup, ...(review.version ? { "Minecraft": review.version } : {}) }));
   if (review.changes)
     content.append(
       ...review.changes.map((c) => row(c.label, `${c.before} → ${c.after}`)),
@@ -430,6 +431,7 @@ function applyOverview(data) {
   if (state.page === "now" && !$("#view").contains(document.activeElement))
     renderNow();
   if (state.page === "world") updateWorld();
+  backupUpdated(backupContext());
 }
 async function refresh() {
   applyOverview(await api("/overview"));
@@ -1005,106 +1007,10 @@ function newBackup() {
     ),
   );
 }
-async function renderBackups() {
-  const data = await api("/backups");
-  if (state.page !== "backups") return;
-  replace(
-    $("#view"),
-    heading(
-      "Backups",
-      null,
-      can("backup") &&
-        button("Criar backup", newBackup, "button primary", "plus"),
-    ),
-    el(
-      "div",
-      "backup-layout",
-      el(
-        "div",
-        "list",
-        ...data.backups.map((p) =>
-          row(
-            p.name || p.id,
-            `${time(p.created, true)} · ${bytes(p.bytes)} · ${p.source === "existing" ? "Rotina existente" : "Oak"}`,
-            () => backupDetail(p),
-            badge(proof(p).label, proof(p).state),
-            "shield",
-          ),
-        ),
-        !data.backups.length &&
-          empty(
-            "Nenhum ponto disponível",
-            "Crie o primeiro backup antes de fazer mudanças importantes.",
-          ),
-      ),
-      el(
-        "aside",
-        "panel",
-        el("h2", "", "Armazenamento local"),
-        el(
-          "p",
-          "muted",
-          "Até 14 pontos do painel e orçamento de 20 GiB. A rotina diária existente mantém sua própria retenção.",
-        ),
-        facts({
-          "Reserva de disco": "20 GiB",
-          "Cópia externa": "Não configurada",
-          "Rotina existente": "Diária, às 05:00",
-        }),
-        el(
-          "p",
-          "caption",
-          "Integridade confirma o arquivo. Extração verifica os dados recuperados. O teste de inicialização abre a cópia em um ambiente isolado.",
-        ),
-      ),
-    ),
-  );
+function backupContext() {
+  return { el, button, field, input, select, heading, api, operation, state, can, showJob, toast };
 }
-function backupDetail(p) {
-  drawer(
-    "PONTO DE RECUPERAÇÃO",
-    el("h2", "", p.name || "Backup da rotina existente"),
-    badge(proof(p).label, proof(p).state),
-    facts({
-      Criado: time(p.created, true),
-      Tamanho: bytes(p.bytes),
-      Local: "Oracle VM",
-      "Inicialização testada": p.restoration?.playable_boot_tested
-        ? "Sim"
-        : "Ainda não",
-    }),
-    el("p", "caption", p.id),
-    el(
-      "div",
-      "detail-actions",
-      can("verify_backup") &&
-        button("Verificar extração", () =>
-          operation("verify_backup", { backup: p.id, boot: false }),
-        ),
-      can("verify_backup") &&
-        button("Testar inicialização isolada", () =>
-          operation("verify_backup", { backup: p.id, boot: true }),
-        ),
-      can("restore_backup") &&
-        p.fingerprint &&
-        button(
-          "Restaurar este ponto",
-          () =>
-            operation("restore_backup", {
-              backup: p.id,
-              fingerprint: p.fingerprint,
-            }),
-          "button danger",
-        ),
-    ),
-    !p.fingerprint &&
-      el(
-        "div",
-        "notice",
-        "Verifique este arquivo antes de preparar uma restauração.",
-      ),
-  );
-}
+async function renderBackups() { return renderRecovery(backupContext()); }
 async function renderOperations() {
   const data = await api("/jobs");
   if (state.page !== "operations") return;
@@ -1133,7 +1039,6 @@ async function renderOperations() {
     const schedules = await api("/schedules");
     if (state.page !== "operations") return;
     const kind = select({
-        backup: "Criar backup",
         save: "Salvar mundo",
         map_refresh: "Atualizar mapa",
       }),
@@ -1147,7 +1052,7 @@ async function renderOperations() {
         el(
           "p",
           "caption",
-          "O backup diário existente continua às 05:00 (São Paulo). As rotinas abaixo são adicionais.",
+          "A rotina de backups é configurada em Backups.",
         ),
         ...schedules.schedules.map((s) =>
           row(

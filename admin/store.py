@@ -238,8 +238,12 @@ class Store:
 
     def tick_schedules(self):
         now = time.time()
+        unified = self.get('backup_status', {}).get('ready', False)
         with self.transaction() as db:
             for row in db.execute('SELECT * FROM schedules WHERE enabled=1 AND next_run<=?', (now,)).fetchall():
+                if unified and row['kind'] == 'backup':
+                    db.execute('UPDATE schedules SET enabled=0 WHERE id=?', (row['id'],))
+                    continue
                 # Coalesce downtime into one run; never accumulate a catch-up storm.
                 db.execute('UPDATE schedules SET next_run=? WHERE id=?', (now + row['interval_minutes'] * 60, row['id']))
                 busy = db.execute("SELECT 1 FROM jobs WHERE kind=? AND state IN ('queued','running')", (row['kind'],)).fetchone()
@@ -250,3 +254,41 @@ class Store:
                 jid = str(uuid.uuid4())
                 db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (jid, now, now, row['actor'], row['kind'], row['label'], row['params'], 'queued', 'Queued', None, None, 'schedule:' + row['id'] + ':' + str(int(row['next_run']))))
                 self.event('operation', row['label'], row['actor'], {'job_id': jid, 'state': 'queued', 'scheduled': True}, db)
+
+    def tick_backups(self):
+        """One host policy, coalesced downtime and durable failure backoff."""
+        status = self.get('backup_status', {})
+        now = time.time()
+        if not status.get('ready') or now - status.get('sampled_at', 0) > 60:
+            return
+        policy = status['policy']
+        if not policy['enabled']:
+            return
+        points = status['backups']
+        health = status.get('health', {})
+        due = status.get('next_run') or 0
+        boot = max((p.get('restoration', {}).get('at', 0) for p in points if p.get('restoration', {}).get('playable_boot_tested')), default=0)
+        candidates = []
+        if status.get('bytes', 0) >= policy['budget_gib'] * 1024**3 and health.get('compacted', 0) + 86400 <= now:
+            candidates.append(('backup_compact', {'revision': policy['revision']}, 'Retenção automática'))
+        if due <= now:
+            candidates.append(('backup', {'name': 'Automático'}, 'Backup automático'))
+        if points and (health.get('check_failed') or health.get('data_checked', 0) + policy['check_days'] * 86400 <= now):
+            candidates.append(('backup_check', {}, 'Verificação automática'))
+        if points and boot + policy['boot_days'] * 86400 <= now:
+            point = next((p for p in points if p.get('restorable')), None)
+            if point:
+                candidates.append(('verify_backup', {'backup': point['id'], 'boot': True}, 'Teste automático de recuperação'))
+        if points and health.get('compacted', 0) + 86400 <= now:
+            candidates.append(('backup_compact', {'revision': policy['revision']}, 'Retenção automática'))
+        with self.transaction() as db:
+            if db.execute("SELECT 1 FROM jobs WHERE state IN ('queued','running')").fetchone():
+                return
+            for kind, params, label in candidates:
+                last = db.execute("SELECT updated FROM jobs WHERE actor='backup-policy' AND kind=? ORDER BY created DESC LIMIT 1", (kind,)).fetchone()
+                if last and now - last['updated'] < 1800:
+                    continue
+                jid = str(uuid.uuid4())
+                db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (jid, now, now, 'backup-policy', kind, label, encode(params), 'queued', 'Queued', None, None, 'policy:' + jid))
+                self.event('operation', label, 'backup-policy', {'job_id': jid, 'state': 'queued', 'scheduled': True}, db)
+                break

@@ -4,6 +4,11 @@ import re
 
 ROLES = {'owner': 3, 'administrator': 2, 'moderator': 1, 'observer': 0}
 OPERATIONS = {
+    'backup_policy': {'label': 'Configurar backups', 'role': 2, 'review': False, 'schedule': False},
+    'backup_edit': {'label': 'Editar ponto', 'role': 2, 'review': False, 'schedule': False},
+    'backup_delete': {'label': 'Excluir ponto', 'role': 3, 'review': True, 'schedule': False},
+    'backup_check': {'label': 'Verificar repositório', 'role': 2, 'review': False, 'schedule': False},
+    'backup_compact': {'label': 'Aplicar retenção', 'role': 2, 'review': True, 'schedule': False},
     'environment_apply': {'label': 'Ajustar ambiente', 'role': 2, 'review': True, 'schedule': False},
     'save': {'label': 'Salvar mundo', 'role': 2, 'review': False, 'schedule': True},
     'backup': {'label': 'Criar backup', 'role': 2, 'review': False, 'schedule': True},
@@ -74,6 +79,28 @@ def validate(kind, params, role='owner'):
         from .environment import validate_environment
         return validate_environment(params)
     p = dict(params)
+    if kind.startswith('backup_'):
+        from .backup_repository import SNAPSHOT, validate_policy
+        if kind == 'backup_policy':
+            if p.keys() != {'revision', 'policy'} or type(p['revision']) is not int:
+                raise ValueError('A current policy revision is required.')
+            return {'revision': p['revision'], 'policy': validate_policy(p['policy'])}
+        if kind == 'backup_compact':
+            if p.keys() != {'revision'} or type(p['revision']) is not int:
+                raise ValueError('A current retention revision is required.')
+            return p
+        if kind == 'backup_check':
+            if p:
+                raise ValueError('Unexpected operation parameters.')
+            return {}
+        allowed = {'backup'} if kind == 'backup_delete' else {'backup', 'name', 'pinned'}
+        if p.keys() - allowed or not isinstance(p.get('backup'), str) or not SNAPSHOT.fullmatch(p['backup']):
+            raise ValueError('Invalid recovery point.')
+        if 'name' in p:
+            p['name'] = clean_text(p['name'], 80, 1)
+        if 'pinned' in p and type(p['pinned']) is not bool:
+            raise ValueError('Pinned must be a boolean.')
+        return p
     allowed = {
         'save': set(), 'backup': {'name'}, 'verify_backup': {'backup', 'boot'}, 'restore_backup': {'backup', 'fingerprint'},
         'map_refresh': set(), 'console': {'command'}, 'player_action': {'player', 'action', 'reason', 'target'},
@@ -84,7 +111,7 @@ def validate(kind, params, role='owner'):
     if kind == 'backup':
         p = {'name': clean_text(p.get('name', 'Ponto de recuperação'), 80, 1)}
     elif kind in ('verify_backup', 'restore_backup'):
-        if not isinstance(p.get('backup'), str) or not BACKUP.fullmatch(p['backup']):
+        if not isinstance(p.get('backup'), str) or not (BACKUP.fullmatch(p['backup']) or re.fullmatch(r'[a-f0-9]{64}', p['backup'])):
             raise ValueError('Invalid recovery point.')
         if kind == 'restore_backup' and not re.fullmatch(r'[a-f0-9]{64}', p.get('fingerprint', '')):
             raise ValueError('A current recovery review is required.')
