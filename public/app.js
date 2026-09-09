@@ -127,7 +127,8 @@ el('chat-form').onsubmit = async e => {
     // Preserve a new draft typed while the previous message was being sent.
     if (el('message').value.trim() === message) el('message').value = '';
     el('form-status').dataset.state = 'success';
-    el('form-status').textContent = 'Enviado';
+    el('form-status').textContent = d.deliveredToGame === false
+      ? 'Enviado na web. Ninguém no jogo para receber agora.' : 'Enviado';
     try { localStorage.setItem('oak-web-name', name); } catch {}
     el('message').focus();
   } catch (err) {

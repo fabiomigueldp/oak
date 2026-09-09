@@ -39,9 +39,15 @@ def send_message(name,message):
  props=dict(l.split('=',1) for l in (ROOT/'server/server.properties').read_text().splitlines() if '=' in l and not l.startswith('#'))
  with socket.create_connection(('127.0.0.1',int(props['rcon.port'])),timeout=5) as s:
   if packet(s,1,3,props['rcon.password'])[0]!=1:raise ConnectionError('Authentication failed')
+  delivered=False
   for command in chat_commands(name,message):
    rid,result=packet(s,2,2,command)
-   if rid!=2 or result.strip():raise ConnectionError('Command failed')
+   if rid!=2:raise ConnectionError('Command failed')
+   # An empty audience is normal: the message still belongs in web history.
+   if result.strip()=='No player was found':return delivered
+   if result.strip():raise ConnectionError('Command failed')
+   delivered=True
+  return delivered
 def validate(data):
  name=data.get('name','');message=data.get('message','')
  if not isinstance(name,str) or not 1<=len(name.strip())<=MAX_NAME:raise ValueError('Informe um nome de até 64 caracteres.')
@@ -142,10 +148,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
    recent.setdefault(ip,collections.deque()).append(now);global_rate.append(now)
   try:
    if not json.loads((ROOT/'web/status.json').read_text()).get('online'):raise ConnectionError()
-   send_message(name,message)
+   delivered=send_message(name,message)
   except Exception:return self.result(503,{'error':'Não foi possível confirmar o envio. Confira o jogo antes de tentar novamente.'})
   with condition:web_messages.append({'time':datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S'),'player':name,'text':message,'source':'web'})
-  self.result(200,{'ok':True})
+  self.result(200,{'ok':True,'deliveredToGame':delivered})
 if __name__=='__main__':
  threading.Thread(target=monitor,daemon=True).start()
  http.server.ThreadingHTTPServer(('172.19.0.1',8091),Handler).serve_forever()

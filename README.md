@@ -53,6 +53,8 @@ The existing Oracle Ubuntu VM runs Fabric Minecraft and BlueMap CLI separately. 
 
 Chat uses one shared monitor and Server-Sent Events, capped at 32 simultaneous streams. Website messages are labeled `[Web]`; visitor names are self-selected and are not authenticated Minecraft identities. Names accept up to 64 Unicode characters and messages up to 10,000, including line breaks, tabs, emoji, and symbols. Enter sends; Shift+Enter inserts a line break. Requests are capped at 128 KiB, with flood ceilings of 60 messages per IP and 300 overall per minute and no mandatory delay between messages. Origin checks and JSON serialization into fixed `tellraw` commands remain enforced. Long messages are split into commands of at most 1,446 ASCII bytes (plus 14 RCON framing bytes), preserving the full text in website history. A partially delivered message is not retried automatically. RCON credentials remain in the VM's restricted `server.properties` file. Never expose that file or raw server logs.
 
+When Minecraft is online with no connected players, messages are accepted into web history and the sender is told there was nobody in game to receive them. These messages are not queued for later delivery to the game. RCON authentication, transport, and command errors still report an unconfirmed send.
+
 ## Deployment
 
 GitHub Actions checks pushes and pull requests. Deployment is an explicit SSH operation against an exact commit, not an automatic deployment on every push. See [the deployment runbook](deploy/README.md) and [agent instructions](AGENTS.md).
