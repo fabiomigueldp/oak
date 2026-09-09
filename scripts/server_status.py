@@ -65,6 +65,9 @@ def query(host='127.0.0.1', port=25565):
 
 def compatibility_status():
     status = query()
+    # Pre-3 permits a bare string. The older Geyser ping parser expects an object.
+    if isinstance(status.get('description'), str):
+        status['description'] = {'text': status['description']}
     # Only the loopback bridge speaks 26.2; preserve the backend MOTD and counts.
     status['version'] = {'name': '26.2', 'protocol': 776}
     return status

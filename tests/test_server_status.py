@@ -45,6 +45,11 @@ class StatusTests(unittest.TestCase):
                 with self.assertRaises((ValueError, EOFError)):
                     status.query()
 
+    def test_wraps_bare_pre3_text_for_legacy_geyser(self):
+        with patch.object(status, 'query', return_value={'description': 'Oak\n§7Minecraft 26.3-pre-3'}):
+            result = status.compatibility_status()
+        self.assertEqual(result['description'], {'text': 'Oak\n§7Minecraft 26.3-pre-3'})
+
     def test_rejects_invalid_counts(self):
         for count in (-1, True, '4', None):
             with self.subTest(count=count), self.response(self.frame({'version': {}, 'players': {'online': count, 'max': 12}})):

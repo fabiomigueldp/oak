@@ -117,7 +117,8 @@ def main():
                     description = description.get('text', '')
                 if 'Oak' not in description or '26.3-pre-3' not in description or 'favicon' not in java:
                     raise RuntimeError('Java presentation is not ready.')
-                if 'Oak' not in bedrock['name'] or '26.3-pre-3' not in bedrock['description']:
+                plain = lambda text: re.sub(r'§.', '', text)
+                if plain(bedrock['name']) != 'Oak' or plain(bedrock['description']) != 'Minecraft 26.3-pre-3':
                     raise RuntimeError('Bedrock presentation is not ready.')
                 if (bedrock['online'], bedrock['max']) != (java['players']['online'], java['players']['max']):
                     raise RuntimeError('Bedrock player counts have not refreshed.')
