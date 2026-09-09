@@ -56,6 +56,22 @@ class PolicyTests(unittest.TestCase):
             store.tick_backups()
             self.assertEqual(len(store.jobs()), 1)
 
+    def test_failed_boot_remains_eligible_for_a_bounded_retry(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = Store(Path(folder)/'test.sqlite3')
+            now = time.time()
+            store.set('backup_status', {'ready': True, 'sampled_at': now,
+                'policy': {**DEFAULT_POLICY, 'enabled': True}, 'next_run': now + 10800,
+                'health': {'data_checked': now, 'compacted': now},
+                'backups': [{'id': 'a'*64, 'compatible': True, 'integrity': True, 'restorable': False,
+                             'verification_failed': {'boot': True}, 'manifest': {'includes_runtime': True}, 'restoration': {}}]})
+            store.tick_backups()
+            self.assertEqual(store.jobs()[0]['kind'], 'verify_backup')
+            job = store.claim()
+            store.finish(job['id'], 'failed', error='Synthetic failure')
+            store.tick_backups()
+            self.assertEqual(len(store.jobs()), 1)
+
 
 @unittest.skipUnless(shutil.which('restic'), 'Real restic executable required')
 class RepositoryTests(unittest.TestCase):

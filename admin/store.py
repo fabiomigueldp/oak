@@ -275,8 +275,8 @@ class Store:
             candidates.append(('backup', {'name': 'Automático'}, 'Backup automático'))
         if points and (health.get('check_failed') or health.get('data_checked', 0) + policy['check_days'] * 86400 <= now):
             candidates.append(('backup_check', {}, 'Verificação automática'))
-        if points and boot + policy['boot_days'] * 86400 <= now:
-            point = next((p for p in points if p.get('restorable')), None)
+        if points and not health.get('check_failed') and boot + policy['boot_days'] * 86400 <= now:
+            point = next((p for p in points if p.get('compatible') and p.get('integrity') and p.get('manifest', {}).get('includes_runtime')), None)
             if point:
                 candidates.append(('verify_backup', {'backup': point['id'], 'boot': True}, 'Teste automático de recuperação'))
         if points and health.get('compacted', 0) + 86400 <= now:
