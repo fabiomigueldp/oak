@@ -57,10 +57,10 @@ final class RenderRegression {
                 var previous=new java.util.HashMap<String,Vector3f>();
                 int animated=0;
                 for(int tick=0;tick<680;tick+=2) {
-                    String phase=tick<80?"board":tick<160?"depart":tick<520?"cruise":tick<600?"arrive":"board";
+                    String phase=tick<80?"board":tick<160?"depart":tick<520?"cruise":tick<600?"arrive":"settle";
                     double height=phase.equals("depart")?18*FlightPath.ease((tick-80)/80.0)
-                        :phase.equals("arrive")?18*(1-FlightPath.ease((tick-520)/80.0)):phase.equals("board")?0:18;
-                    rig.animate(new Vec3(0,80+height,0),180,tick,phase,height);
+                        :phase.equals("arrive")?18*(1-FlightPath.ease((tick-520)/80.0)):phase.equals("board")||phase.equals("settle")?0:18;
+                    rig.animate(new Vec3(0,80+height,0),180,tick,phase,height,.6,phase.equals("depart")?.10:phase.equals("arrive")?-.1:0,phase.equals("cruise")?.6:0,phase.equals("board")?tick/80.0:phase.equals("settle")?(tick-600)/80.0:phase.equals("arrive")?(tick-520)/80.0:phase.equals("depart")?(tick-80)/80.0:0);
                     var matrices=new java.util.HashMap<String,Matrix4f>();
                     for(var entry:displays.entrySet()) {
                         var transform=(Transformation)read.invoke(null,entry.getValue().getEntityData());
@@ -68,14 +68,17 @@ final class RenderRegression {
                     }
                     var seat=matrices.get("body").transformPosition(new Vector3f(0,1.47f/4,.18f/4));
                     if(seat.distance(new Vector3f(0,1.47f,.18f))>.0001)throw new AssertionError("Saddle moved away from passenger");
-                    for(String side:new String[]{"left","right"}) {
-                        var upper=rigData.getAsJsonObject(side+"_wing").getAsJsonArray("pivot");
-                        var tip=rigData.getAsJsonObject(side+"_tip").getAsJsonArray("pivot");
+                    for(var child:rigData.entrySet()) {
+                        var definition=child.getValue().getAsJsonObject();
+                        if(!definition.has("parent")||definition.get("parent").isJsonNull())continue;
+                        String parentName=definition.get("parent").getAsString();
+                        var upper=rigData.getAsJsonObject(parentName).getAsJsonArray("pivot");
+                        var tip=definition.getAsJsonArray("pivot");
                         var wrist=new Vector3f();
                         for(int a=0;a<3;a++)wrist.setComponent(a,(tip.get(a).getAsFloat()-upper.get(a).getAsFloat())/4);
-                        matrices.get(side+"_wing").transformPosition(wrist);
-                        if(wrist.distance(matrices.get(side+"_tip").transformPosition(new Vector3f()))>.0001)
-                            throw new AssertionError("Detached wing joint: "+side);
+                        matrices.get(parentName).transformPosition(wrist);
+                        if(wrist.distance(matrices.get(child.getKey()).transformPosition(new Vector3f()))>.0001)
+                            throw new AssertionError("Detached joint: "+child.getKey());
                     }
                     for(var entry:matrices.entrySet()) {
                         int cubeIndex=0;
@@ -85,7 +88,7 @@ final class RenderRegression {
                                 var point=new Vector3f();
                                 for(int a=0;a<3;a++)point.setComponent(a,(center.get(a).getAsFloat()+size.get(a).getAsFloat()*(((corner>>a)&1)==0?-.5f:.5f))/4);
                                 entry.getValue().transformPosition(point);
-                                if(!Float.isFinite(point.y)||point.y+height<-.035||point.y>4||Math.abs(point.x)>4||Math.abs(point.z)>4)
+                                if(!Float.isFinite(point.y)||point.y+displays.get(entry.getKey()).getY()-80<-.035||point.y>4.3||Math.hypot(point.x,point.z)>3.7)
                                     throw new AssertionError("Model left the clear flight envelope: "+entry.getKey()+" at "+tick+" "+point);
                                 String key=entry.getKey()+":"+cubeIndex+":"+corner;
                                 var last=previous.put(key,point);

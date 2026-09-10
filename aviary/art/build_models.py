@@ -85,9 +85,10 @@ if bpy.context.window:
     bpy.context.window.scene = scene
 scene.unit_settings.system = 'METRIC'
 scene.render.engine = 'CYCLES'
-scene.cycles.samples = 32
-scene.render.resolution_x = 1440
-scene.render.resolution_y = 1080
+scene.cycles.samples = 24
+scene.cycles.use_denoising = False
+scene.render.resolution_x = 1200
+scene.render.resolution_y = 900
 scene.render.resolution_percentage = 100
 scene.world = bpy.data.worlds.new('Aviary studio')
 scene.world.use_nodes = True
@@ -102,12 +103,12 @@ def xyz(value):
     return (value[0], -value[2], value[1])
 
 
-def part(name, pivot):
+def part(name, pivot, parent=None):
     obj = bpy.data.objects.new(name, None)
     obj.parent = root
     obj.location = xyz(pivot)
     scene.collection.objects.link(obj)
-    parts[name] = {'pivot': list(pivot), 'cubes': [], 'object': obj}
+    parts[name] = {'pivot': list(pivot), 'parent': parent, 'cubes': [], 'object': obj}
     return name
 
 
@@ -161,12 +162,13 @@ cube('body', 'Saddle front', (0, 1.57, -.19), (.75, .21, .12), 'leather')
 for side in (-1, 1):
     cube('body', 'Saddle piping', (side*.43, 1.44, .18), (.045, .045, .86), 'gold')
 
-part('head', (0, 1.35, -.65))
-cube('head', 'Neck', (0, 1.36, -.80), (.68, .65, .60), 'cream')
+part('neck', (0, 1.24, -.55))
+part('head', (0, 1.70, -.95), 'neck')
+cube('neck', 'Neck', (0, 1.36, -.80), (.68, .65, .60), 'cream')
 cube('head', 'Head', (0, 1.79, -1.02), (.79, .62, .72), 'ivory')
 for side in (-1, 1):
-    cube('head', 'Ruff side', (side*.4, 1.31, -.72), (.26, .3, .72), 'ivory')
-    cube('head', 'Ruff rear', (side*.25, 1.3, -.40), (.3, .24, .3), 'cream')
+    cube('neck', 'Ruff side', (side*.4, 1.31, -.72), (.26, .3, .72), 'ivory')
+    cube('neck', 'Ruff rear', (side*.25, 1.3, -.40), (.3, .24, .3), 'cream')
     cube('head', 'Amber eye', (side*.40, 1.88, -1.18), (.025, .15, .18), 'gold')
     cube('head', 'Pupil', (side*.419, 1.88, -1.215), (.018, .095, .085), 'eye')
     cube('head', 'Eye glint', (side*.432, 1.91, -1.239), (.009, .025, .022), 'ivory')
@@ -182,9 +184,10 @@ for side, name in [(-1, 'left'), (1, 'right')]:
         x = side*(.66+i*.23)
         cube(group, name+' covert', (x, 1.25, .30+i*.065), (.28, .13, .63), 'chestnut_light' if i%2 else 'chestnut')
         cube(group, name+' secondary', (x, 1.10, .72+i*.06), (.28, .12, .69), 'cream' if i==1 else 'feather_light')
-    group = part(name+'_tip', (side*1.65, 1.15, .06))
-    cube(group, name+' forewing', (side*2.11, 1.15, .10), (.95, .20, .58), 'chestnut')
+    group = part(name+'_elbow', (side*1.65, 1.15, .06), name+'_wing')
+    cube(group, name+' forewing', (side*2.0, 1.15, .10), (.70, .20, .58), 'chestnut')
     for i in range(6):
+        if i == 3: group = part(name+'_tip', (side*2.40, 1.12, .60), name+'_elbow')
         x = side*(1.83+i*.25)
         length = (.84, .94, 1.06, 1.12, 1.05, .86)[i]
         cube(group, name+' primary', (x, 1.10-i*.012, .45+i*.15), (.285, .10, length), 'feather' if i%2 else 'feather_light')
@@ -194,12 +197,12 @@ for side, name in [(-1, 'left'), (1, 'right')]:
 part('tail', (0, .68, .75))
 for i in range(5):
     cube('tail', 'Tail feather', ((i-2)*.24, .66-abs(i-2)*.012, 1.25+.08*(2-abs(i-2))), (.27, .12, 1.02+.06*(2-abs(i-2))), 'feather' if i%2 else 'feather_light')
-part('feet', (0, .52, .05))
 for side in (-1, 1):
-    cube('feet', 'Leg', (side*.33, .35, -.14), (.22, .5, .25), 'gold')
+    group = part(('left' if side < 0 else 'right')+'_foot', (side*.33, .52, .05))
+    cube(group, 'Leg', (side*.33, .35, -.14), (.22, .5, .25), 'gold')
     for i in range(3):
-        cube('feet', 'Toe', (side*.33+(i-1)*.12, .07, -.36), (.105, .14, .55), 'gold')
-        cube('feet', 'Claw', (side*.33+(i-1)*.12, .04, -.66), (.105, .09, .16), 'talon')
+        cube(group, 'Toe', (side*.33+(i-1)*.12, .07, -.36), (.105, .14, .55), 'gold')
+        cube(group, 'Claw', (side*.33+(i-1)*.12, .04, -.66), (.105, .09, .16), 'talon')
 
 # The model exporter uses the authored cuboid coordinates directly. Blender-only
 # preview lighting and materials never become gameplay dependencies.
@@ -214,14 +217,15 @@ for name, spec in parts.items():
     model = {'textures': {m: 'oak_aviary:item/'+m for m in PALETTE}, 'elements': elements, 'gui_light': 'front'}
     (ASSETS/'models/item'/f'{name}.json').write_text(json.dumps(model, separators=(',',':')), encoding='utf-8')
     (ASSETS/'items'/f'{name}.json').write_text(json.dumps({'model': {'type':'minecraft:model','model':'oak_aviary:item/'+name}}), encoding='utf-8')
-    rig[name] = {'pivot':spec['pivot'], 'cubes':spec['cubes'], 'scale':4}
+    rig[name] = {'pivot':spec['pivot'], 'parent':spec['parent'], 'cubes':spec['cubes'], 'scale':4}
 (ART/'condor-rig.json').write_text(json.dumps(rig,indent=2),encoding='utf-8')
 
-# Outer wing joints inherit their upper wing's motion.
-for side in ('left', 'right'):
-    tip, wing = parts[side+'_tip'], parts[side+'_wing']
-    tip['object'].parent = wing['object']
-    tip['object'].location = xyz([tip['pivot'][i]-wing['pivot'][i] for i in range(3)])
+# The scene and runtime use the same parent hierarchy.
+for name, spec in parts.items():
+    if spec['parent']:
+        parent = parts[spec['parent']]
+        spec['object'].parent = parent['object']
+        spec['object'].location = xyz([spec['pivot'][i]-parent['pivot'][i] for i in range(3)])
 scene.render.fps = 20
 scene.frame_end = motion['period']
 for name, spec in parts.items():
@@ -232,17 +236,18 @@ for name, spec in parts.items():
         side = -1 if name.startswith('left') else 1
         obj.rotation_euler = (0, 0, 0)
         if 'wing' in name: obj.rotation_euler.y = -side*wing
-        if 'tip' in name: obj.rotation_euler.y = -side*tip
+        if 'elbow' in name: obj.rotation_euler.y = -side*tip*.55
+        if 'tip' in name: obj.rotation_euler.y = -side*tip*.45
         if name == 'head': obj.rotation_euler.x = head
         if name == 'tail': obj.rotation_euler.x = tail
-        if name == 'feet': obj.rotation_euler.x = feet
+        if name.endswith('_foot'): obj.rotation_euler.x = feet
         obj.keyframe_insert(data_path='rotation_euler',frame=frame)
     for curve in obj.animation_data.action.layers[0].strips[0].channelbag(obj.animation_data.action_slot).fcurves:
         for key in curve.keyframe_points: key.interpolation = 'LINEAR'
 # Bank around the saddle attachment, keeping the passenger's seat fixed.
 root.location = xyz((0, 1.47, .18))
 for name, spec in parts.items():
-    if not name.endswith('_tip'):
+    if not spec['parent']:
         spec['object'].location = xyz([spec['pivot'][i]-(0,1.47,.18)[i] for i in range(3)])
 for index, sample in enumerate(motion['clips']['power'] + [motion['clips']['power'][0]]):
     root.rotation_euler.y = -sample[5]

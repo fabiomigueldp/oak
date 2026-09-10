@@ -33,11 +33,16 @@ final class Journey {
     boolean skip;
     private Vec3 current;
     private final float yaw;
-    private int cruiseTicks;
+    private FlightScene routeScene,callScene,exitScene,entryScene,activeScene;
+    private int sceneTick;
+    private boolean arrivalJournal;
+    private float facing;
+    private Vec3 previousBase,cameraFocus;
+
 
     Journey(Aviary app,ServerPlayer player,AviaryStore.Port origin,AviaryStore.Port destination) {
         this.app=app;this.player=player;this.origin=origin;this.destination=destination;level=player.level();current=position(origin);
-        yaw=(float)Math.toDegrees(Math.atan2(destination.z()-origin.z(),destination.x()-origin.x()))-90;
+        yaw=(float)Math.toDegrees(Math.atan2(destination.z()-origin.z(),destination.x()-origin.x()))-90;facing=yaw;
         try {hold(chunk(position(origin)),2);hold(chunk(position(destination)),2);journal=app.store.journal(record(false));}
         catch(RuntimeException e){releaseTickets();throw e;}
     }
@@ -91,30 +96,59 @@ final class Journey {
         // that camera beyond the subject, so both third-person views face it.
         distance.setBaseValue(14);
         player.connection.send(new net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket(camera.getId(),List.of(distance)));
-        passenger=new PassengerVisual(player,carrier,yaw);
+        passenger=new PassengerVisual(player,carrier,facing);
         player.connection.send(new net.minecraft.network.protocol.game.ClientboundRotateHeadPacket(camera,(byte)(camera.getYHeadRot()*256/360)));
         player.connection.send(new ClientboundSetCameraPacket(camera));
     }
     private void next(String value){phase=value;phaseTick=0;}
-    private Vec3 route(double t) {
-        Vec3 a=position(origin).add(0,18,0),b=position(destination).add(0,18,0);
-        return a.lerp(b,t).add(0,Math.sin(Math.PI*t)*20,0);
-    }
-    private boolean planFullRoute() {
-        double distance=Math.hypot(origin.x()-destination.x(),origin.z()-destination.z());
-        if(distance>app.store.settings.shortcutDistance())return false;
-        // Never generate a corridor through unexplored terrain. A distant or obstructed
-        // corridor gets the same cinematic cut as a long route.
-        for(int i=0;i<=Math.ceil(distance/3);i++) {
-            Vec3 p=route(i/Math.max(1,Math.ceil(distance/3)));
-            for(int x=-4;x<=4;x+=2)for(int z=-4;z<=4;z+=2) {
-                BlockPos at=BlockPos.containing(p.x+x,p.y,p.z+z);
-                if(!level.hasChunkAt(at))return false;
+    private boolean clearSweep(Vec3 from,Vec3 to) {
+        AABB box=new AABB(Math.min(from.x,to.x)-3.7,Math.min(from.y,to.y)+.01,Math.min(from.z,to.z)-3.7,
+            Math.max(from.x,to.x)+3.7,Math.max(from.y,to.y)+4.3,Math.max(from.z,to.z)+3.7);
+        for(double x=box.minX;x<=box.maxX+.01;x+=Math.max(.5,(box.maxX-box.minX)/2))
+            for(double z=box.minZ;z<=box.maxZ+.01;z+=Math.max(.5,(box.maxZ-box.minZ)/2)) {
+                BlockPos pos=BlockPos.containing(x,box.minY,z);
+                if(!level.hasChunkAt(pos)||!level.getWorldBorder().isWithinBounds(pos))return false;
             }
-            if(!level.noBlockCollision(null,new AABB(p.x-4,p.y,p.z-4,p.x+4,p.y+4,p.z+4)))return false;
+        for(var shape:level.getBlockAndLiquidCollisions(null,box))if(!shape.isEmpty())return false;
+        return true;
+    }
+    private boolean valid(FlightScene scene) {
+        Vec3 last=scene.a;
+        for(int tick=0;tick<=scene.ticks;tick++) {
+            Vec3 target=scene.at(tick);
+            if(!clearSweep(last,target))return false;
+            last=target;
         }
-        for(int i=0;i<=Math.ceil(distance/16);i++)hold(chunk(route(i/Math.max(1,Math.ceil(distance/16)))),1);
-        cruiseTicks=FlightPath.cruiseTicks(distance);return true;
+        return true;
+    }
+    private FlightScene approach(Vec3 port,boolean arriving) {
+        for(double reach:new double[]{12,7,0})for(float angle:new float[]{0,45,-45,90,-90}) {
+            if(reach==0&&angle!=0)continue;
+            FlightScene path=arriving?FlightScene.entry(port,yaw+angle,reach):FlightScene.exit(port,yaw+angle,reach);
+            if(valid(path))return path;
+        }
+        throw new IllegalStateException("The aviport needs a clear approach for the bird and rider.");
+    }
+    private void planScene() {
+        Vec3 a=position(origin),d=position(destination);
+        double distance=Math.hypot(a.x-d.x,a.z-d.z);
+        if(distance<=app.store.settings.shortcutDistance())for(double bow:new double[]{Math.min(5,distance*.1),-Math.min(5,distance*.1),0}) {
+            FlightScene candidate=FlightScene.route(a,d,bow);
+            if(valid(candidate)){routeScene=candidate;break;}
+        }
+        exitScene=approach(a,false);entryScene=approach(d,true);
+        FlightScene call=approach(a,true);callScene=new FlightScene(call.a,call.b,call.c,call.d,58);
+        shortcut=routeScene==null;
+        if(routeScene!=null)for(int tick=0;tick<=routeScene.ticks;tick+=8)hold(chunk(routeScene.at(tick)),1);
+    }
+    private void use(FlightScene scene){activeScene=scene;sceneTick=0;previousBase=null;}
+    private boolean advance(String action) {
+        sceneTick=Math.min(activeScene.ticks,sceneTick+1);
+        Vec3 target=activeScene.at(sceneTick);
+        if(!clearSweep(previousBase==null?target:previousBase,target))return false;
+        double t=sceneTick/(double)activeScene.ticks;
+        String beat=action.equals("flight")?(t<.2?"depart":t>.73?"arrive":"cruise"):action;
+        move(target,beat,t,activeScene.heading(sceneTick,facing));return true;
     }
     void tick() {
         if(closed)return;
@@ -126,46 +160,52 @@ final class Journey {
             if(!journal.isDone()||loads.stream().anyMatch(f->!f.isDone()))return;
             journal.join();for(var f:loads)f.join();
             if(!clearPort(level,origin)||!clearPort(level,destination))throw new IllegalStateException("A landing area is obstructed");
-            shortcut=!planFullRoute();bird=new BirdRig(level,current.add(0,12,0));carrier=anchor(current);camera=anchor(current.add(7,3,7));
-            bird.animate(current.add(0,12,0),yaw,age,"call",12);
+            planScene();bird=new BirdRig(level,callScene.a);carrier=anchor(current);camera=anchor(current.add(7,3,7));
+            use(callScene);facing=callScene.heading(2,yaw);
+            bird.animate(callScene.a,facing,age,"call",14);
             next("call");
         } else if(phase.equals("call")) {
             if(player.position().distanceTo(position(origin))>6){abort("Flight cancelled. Stay at the aviport to board.");return;}
-            double height=12*(1-FlightPath.ease(phaseTick/50.0));
-            if(age%2==0)bird.animate(position(origin).add(0,height,0),yaw,age,"call",height);
-            if(phaseTick<50&&!skip)return;
-            current=position(origin);
-            player.teleportTo(level,current.x,current.y,current.z,Set.of(),yaw,0,true);
+            sceneTick=Math.min(callScene.ticks,sceneTick+1);
+            Vec3 target=callScene.at(sceneTick);
+            if(!clearSweep(previousBase==null?target:previousBase,target))throw new IllegalStateException("The bird's approach is obstructed.");
+            facing=callScene.heading(sceneTick,facing);
+            bird.animate(target,facing,age,"call",Math.max(0,target.y-origin.y()),.3,-.08,0,sceneTick/(double)callScene.ticks);
+            previousBase=target;
+            if(sceneTick<callScene.ticks)return;
+            current=position(origin);previousBase=null;
+            player.teleportTo(level,current.x,current.y,current.z,Set.of(),facing,0,true);
             if(!player.startRiding(carrier,true,true))throw new IllegalStateException("Could not board");
             next("board");
         } else if(phase.equals("board")) {
-            move(position(origin));
+            move(position(origin),"board",phaseTick/52.0,(routeScene!=null?routeScene:exitScene).heading(3,yaw));
             if(phaseTick==12)attachCamera();
-            if(phaseTick>=40)next("depart");
+            if(phaseTick>=52){use(shortcut||skip?exitScene:routeScene);next(shortcut||skip?"depart":"flight");}
         } else if(phase.equals("depart")) {
-            move(position(origin).add(0,18*FlightPath.ease(phaseTick/80.0),0));
-            if(phaseTick>=80)next(shortcut||skip?"fade-out":"cruise");
-        } else if(phase.equals("cruise")) {
-            Vec3 target=route(FlightPath.ease(phaseTick/(double)cruiseTicks));
-            if(!level.noBlockCollision(null,new AABB(target.x-4,target.y,target.z-4,target.x+4,target.y+4,target.z+4))){next("fade-out");return;}
-            move(target);
-            if(skip)next("fade-out");else if(phaseTick>=cruiseTicks){journal=app.store.journal(record(true));next("commit-arrival");}
+            if(!advance("depart"))throw new IllegalStateException("Departure became obstructed.");
+            if(sceneTick>=56)next("fade-out");
+        } else if(phase.equals("flight")) {
+            if(!advance("flight")){next("fade-out");return;}
+            if(sceneTick>activeScene.ticks*.65&&!arrivalJournal){journal=app.store.journal(record(true));arrivalJournal=true;}
+            if(arrivalJournal&&journal.isDone()){journal.join();transferred=true;}
+            if(skip)next("fade-out");else if(sceneTick>=activeScene.ticks)next("settle");
         } else if(phase.equals("fade-out")) {
-            move(current);setFade(Math.min(16,(phaseTick+1)/2));
+            if(!advance("depart"))move(current,"hold",0,facing);
+            setFade(Math.min(16,(phaseTick+1)/2));
             if(phaseTick>=32){journal=app.store.journal(record(true));next("transfer");}
         } else if(phase.equals("transfer")) {
             if(!journal.isDone())return;journal.join();
-            if(phaseTick%5==0&&!clearPort(level,destination))throw new IllegalStateException("Arrival area changed");
+            if(!clearPort(level,destination)||!valid(entryScene))throw new IllegalStateException("Arrival area changed");
             transferred=true;player.connection.send(new ClientboundSetCameraPacket(player));
             if(passenger!=null){passenger.close();passenger=null;}
             player.stopRiding();carrier.discard();camera.discard();bird.close();
-            current=position(destination).add(0,18,0);
-            player.teleportTo(level,current.x,current.y,current.z,Set.of(),yaw,0,true);
+            use(entryScene);current=entryScene.a;cameraFocus=null;facing=entryScene.heading(3,yaw);
+            player.teleportTo(level,current.x,current.y,current.z,Set.of(),facing,0,true);
             carrier=anchor(current);camera=anchor(current.add(7,3,7));bird=new BirdRig(level,current);
-            bird.animate(current,yaw,age,"arrival-load",18);
+            bird.animate(current,facing,age,"arrive",14);
             if(!player.startRiding(carrier,true,true))throw new IllegalStateException("Could not resume flight");next("arrival-load");
         } else if(phase.equals("arrival-load")) {
-            move(current);
+            move(entryScene.a,"hold",0,facing);
             if(phaseTick==15)attachCamera();
             boolean pending=false;
             var center=chunk(current);
@@ -173,29 +213,41 @@ final class Journey {
             if(phaseTick>=60&&!pending)next("fade-in");
             if(phaseTick>240)throw new IllegalStateException("Destination chunk delivery timed out");
         } else if(phase.equals("fade-in")) {
-            move(current);setFade(Math.max(0,16-phaseTick/2));if(phaseTick>=32)next("arrive");
-        } else if(phase.equals("commit-arrival")) {
-            move(current);if(journal.isDone()){journal.join();transferred=true;next("arrive");}
+            if(!advance("arrive"))throw new IllegalStateException("Arrival approach became obstructed.");
+            setFade(Math.max(0,16-phaseTick/2));if(phaseTick>=32)next("arrive");
         } else if(phase.equals("arrive")) {
+            if(!advance("arrive"))throw new IllegalStateException("Arrival approach became obstructed.");
+            if(sceneTick>=activeScene.ticks)next("settle");
+        } else if(phase.equals("settle")) {
             if(!clearPort(level,destination))throw new IllegalStateException("Arrival area changed");
-            move(position(destination).add(0,18*(1-FlightPath.ease(phaseTick/80.0)),0));
-            if(phaseTick>=80)finish(destination,"Arrived at "+destination.name()+".");
+            move(position(destination),"settle",Math.min(1,phaseTick/28.0),facing);
+            if(phaseTick>=28&&journal.isDone()){journal.join();transferred=true;finish(destination,"Arrived at "+destination.name()+".");}
         }
     }
-    private void move(Vec3 target) {
-        current=target;carrier.setPos(target);carrier.setYRot(yaw);carrier.positionRider(player);
+    private void move(Vec3 target,String action,double progress,float desiredYaw) {
+        Vec3 velocity=previousBase==null?Vec3.ZERO:target.subtract(previousBase);
+        previousBase=target;current=target;
+        float turn=net.minecraft.util.Mth.wrapDegrees(desiredYaw-facing);
+        turn=(float)Math.clamp(turn*.22,-1.8,1.8);facing+=turn;
+        double clearance=action.equals("board")||action.equals("settle")?0:
+            action.equals("arrive")?Math.max(0,target.y-destination.y()):action.equals("depart")?Math.max(0,target.y-origin.y()):14;
+        BirdRig.Frame frame=bird.animate(target,facing,age,action,clearance,velocity.horizontalDistance(),velocity.y,turn,progress);
+        Vec3 root=frame.position();carrier.setPos(root);carrier.setYRot(facing);carrier.setYHeadRot(facing);carrier.positionRider(player);
         if(!player.isPassenger())player.startRiding(carrier,true,true);
-        double angle=Math.toRadians(yaw+135),distance=6.5;
-        // A shallow pitch keeps the mirrored F5 camera above the landing deck.
-        Vec3 eye=target.add(Math.sin(angle)*distance,2.6,Math.cos(angle)*distance);
-        Vec3 aim=target.add(0,2.0,0).subtract(eye);
+        // Let the subject lead the shot. Bound lag so both mirrored F5 views
+        // still face the rider; keep deck-relative pitch shallow and horizon level.
+        Vec3 desiredFocus=target;
+        cameraFocus=cameraFocus==null?desiredFocus:cameraFocus.lerp(desiredFocus,.16);
+        Vec3 lag=new Vec3(cameraFocus.x-root.x,0,cameraFocus.z-root.z);
+        if(lag.length()>1.15)lag=lag.normalize().scale(1.15);
+        double angle=Math.toRadians(facing+135),distance=6.5;
+        double cameraLift=Math.clamp(cameraFocus.y-root.y,-.18,.18);
+        Vec3 eye=root.add(lag).add(Math.sin(angle)*distance,2.6+cameraLift,Math.cos(angle)*distance);
+        Vec3 aim=root.add(lag.scale(.45)).add(0,2.0+cameraLift,0).subtract(eye);
         camera.setPos(eye.subtract(0,camera.getEyeHeight(),0));camera.setYRot((float)(Math.toDegrees(Math.atan2(aim.z,aim.x))-90));camera.setXRot((float)-Math.toDegrees(Math.atan2(aim.y,Math.hypot(aim.x,aim.z))));
         camera.setYHeadRot(camera.getYRot());
-        double clearance=phase.equals("board")||phase.equals("depart")?target.y-origin.y()
-            :phase.equals("arrive")?target.y-destination.y():18;
-        if(age%2==0&&bird.animate(target,yaw,age,phase,clearance))
-            level.playSound(null,carrier.blockPosition(),net.minecraft.sounds.SoundEvents.ENDER_DRAGON_FLAP,net.minecraft.sounds.SoundSource.NEUTRAL,.12f,1.65f);
-        if(passenger!=null&&age%10==0)passenger.updateEquipment();
+        if(passenger!=null){passenger.updateHeading(facing);if(age%10==0)passenger.updateEquipment();}
+        if(frame.downstroke())level.playSound(null,carrier.blockPosition(),net.minecraft.sounds.SoundEvents.ENDER_DRAGON_FLAP,net.minecraft.sounds.SoundSource.NEUTRAL,.12f,1.65f);
     }
     private void setFade(int value){setFade(value,false);}
     private void setFade(int value,boolean force) {

@@ -22,6 +22,7 @@ final class PassengerVisual implements AutoCloseable {
     private final ServerPlayer owner;
     private final Mannequin avatar;
     private final Map<EquipmentSlot,ItemStack> equipment=new EnumMap<>(EquipmentSlot.class);
+    private byte heading;
 
     PassengerVisual(ServerPlayer owner,Entity carrier,float yaw) {
         this.owner=owner;
@@ -31,6 +32,7 @@ final class PassengerVisual implements AutoCloseable {
         ((MannequinAccess)avatar).aviary$hideDescription(true);
         avatar.setNoGravity(true);avatar.setSilent(true);
         avatar.setPos(owner.position());avatar.setYRot(yaw);avatar.setYHeadRot(yaw);
+        heading=(byte)(yaw*256/360);
         owner.connection.send(new ClientboundAddEntityPacket(avatar.getId(),avatar.getUUID(),avatar.getX(),avatar.getY(),avatar.getZ(),0,yaw,EntityTypes.MANNEQUIN,0,net.minecraft.world.phys.Vec3.ZERO,yaw));
         var data=avatar.getEntityData().getNonDefaultValues();
         if(data!=null)owner.connection.send(new ClientboundSetEntityDataPacket(avatar.getId(),data));
@@ -42,6 +44,12 @@ final class PassengerVisual implements AutoCloseable {
             bytes.writeVarInt(carrier.getId());bytes.writeVarIntArray(new int[]{owner.getId(),avatar.getId()});
             owner.connection.send(ClientboundSetPassengersPacket.STREAM_CODEC.decode(bytes));
         } finally {bytes.release();}
+    }
+    void updateHeading(float yaw) {
+        byte next=(byte)(yaw*256/360);if(next==heading)return;heading=next;
+        avatar.setYRot(yaw);avatar.setYHeadRot(yaw);
+        owner.connection.send(new ClientboundMoveEntityPacket.Rot(avatar.getId(),next,(byte)0,false));
+        owner.connection.send(new ClientboundRotateHeadPacket(avatar,next));
     }
     void updateEquipment() {
         List<Pair<EquipmentSlot,ItemStack>> changes=new ArrayList<>();

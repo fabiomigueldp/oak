@@ -33,30 +33,43 @@ automatically. Only overworld routes are supported in this release.
 
 ## Implementation
 
-The bird has eight native item displays and 100 cuboids. The real player rides an
+The bird has twelve native item displays and 100 cuboids. The real player rides an
 invisible carrier; a separate invisible anchor supplies camera position. Because
 the vanilla client hides its local player with an external camera, an owner-only
 native mannequin renders the passenger's skin and equipment. It is never added to
 the server world, player list or saved data. Observers see the real player. No
 inventory replacement, spectator switch or player-ability change is used.
-Model poses update every two server ticks with native client interpolation.
-The simulation does not run mob AI or scan the whole world.
+Version 0.2.0 replaces the separate vertical departure/cruise/arrival movements
+with connected cubic flight paths. Only the start and landing ease to rest.
+Heading follows the path; turn rate drives body bank, head anticipation and wing
+asymmetry. Climb demand and speed drive powered flight. The first stroke follows
+a preparation pose, and a damped lift response moves bird, saddle and rider together.
+Grounded foot compensation keeps the claws planted during body compression.
 
-Version 0.1.2 uses shared, sampled rest/glide/powered-flight clips. The wing cycle
-continues across phase changes; nine-tick exponential blending changes flight
-intensity without snapping to a new pose. The wrist follows the shoulder, feet
-retract with altitude, and head/tail motion is independent of the wing angle.
-Banking pivots around the saddle attachment. Flap audio follows the downstroke and
-stays silent during gliding or boarding. These changes keep the same entity count
-and ten pose updates per second; six joint channels are interpolated from a small
-table loaded once, rather than running a skeletal animation engine.
+The rig adds a neck, independent feet and an intermediate joint on each wing.
+Shoulder, elbow and wrist rotations combine sweep, folding and flapping; the base
+cuboid count remains 100. Root translations follow the carrier at 20 Hz and joint
+metadata updates at 10 Hz with native interpolation. The private passenger follows
+heading changes; its limbs still use the native riding pose, without custom grip
+or arbitrary torso animation. Camera lag is bounded and its aim permits limited
+subject movement within the frame while retaining both mirrored F5 views.
 
-Routes above 500 horizontal blocks use a fade and relocation near the destination.
-Short routes use a loaded, unobstructed corridor; unavailable corridors use the
-same cut. Endpoint chunks are loaded before departure. Route tickets are bounded,
-reference-counted and released after landing. The initial limit is two concurrent
-flights, configurable up to four. The threshold can be reduced to 100 blocks.
-This is a resource budget, not a measured guarantee for every client or server.
+Routes above the configured horizontal threshold (500 blocks by default) use a
+fade and relocation near the destination. The exit keeps moving through fade-out;
+the entry starts moving during fade-in. Destination chunk/journal waits remain
+fully hidden. A new settling beat finishes the landing before control returns.
+Short routes use a prechecked curved corridor. Obstructed or unavailable corridors
+use the abbreviated route. End-point approaches try a bounded set of directions
+and reaches in loaded terrain, including a compact vertical alternative. Existing
+ports are preserved; no surrounding terrain is cleared or generated for a shot.
+
+Both planning and each actual movement step check swept volumes against blocks,
+fluids, loaded chunks and the world border. Route tickets are bounded,
+reference-counted and released after landing. The default limit is two concurrent
+flights, configurable up to four. Twelve displays increase tracking/metadata work
+relative to the earlier eight-part rig; client frame time and multi-viewer network
+cost have not been benchmarked. There is no mob AI, per-feather simulation or
+full aerodynamic solver. These budgets are not a guarantee for every client.
 
 An atomic, fsynced recovery journal precedes boarding and transfer. Damage and
 gameplay interactions are blocked while travelling. Departure/arrival ports are
@@ -81,15 +94,18 @@ checking the model format, mixins, camera and effect APIs again.
 - [Exported rig](art/condor-rig.json)
 - [Shared motion authoring](art/motion.py)
 - [Runtime motion samples](art/condor-motion.json)
+- [Flight direction and implementation scope](art/FLIGHT_DIRECTION.md)
 
 Run Blender with `--background --factory-startup --python aviary/art/build_models.py`.
 This creates a separate scene and exports matching vanilla cuboid models. The
 construction study leaves the front of the deck open, correcting a fence in the
 generated concept. No OBJ/glTF loader or third-party model plugin is required.
-The Blender scene uses the same packed pixel textures, face UV extents and motion
-samples as the resource pack and server rig. Its 20 fps timeline previews one
-powered-flight cycle; the game also blends rest/glide clips according to phase and
-altitude. Lighting is a studio preview, not a simulation of Minecraft lighting.
+The Blender scene uses the same packed pixel textures, face UV extents, parent
+hierarchy and base motion samples as the resource pack/server rig. Its 20 fps
+timeline previews one base powered-flight cycle. The game additionally applies
+action-dependent folding, steering, lift, contact compensation and camera motion
+through `BirdMotion`, `BirdRig` and `Journey`; the studio loop is not a preview of
+that complete runtime scene. Lighting is a studio preview, not a simulation of Minecraft lighting.
 Textures use eight texels per world block, directional feather vanes, quieter
 head/beak surfaces and solid pupils; thin feather edges no longer stretch an
 entire 16-pixel tile. A smaller breast/belly silhouette, tapered primary feathers,
