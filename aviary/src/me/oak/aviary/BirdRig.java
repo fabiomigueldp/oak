@@ -18,6 +18,9 @@ import java.util.*;
 
 /** Twelve articulated native item displays, exported from the authored Blender scene. */
 public final class BirdRig {
+    // Native lighting samples the display entity, not its transformed mesh.
+    // Keep that probe in the body while the flight root compresses into the deck.
+    static final float LIGHT_ANCHOR_HEIGHT=1.25f;
     private record Part(String name,Vec3 pivot,String parent,Display.ItemDisplay entity) {}
     private final List<Part> parts=new ArrayList<>();
     private final Map<String,Part> byName=new HashMap<>();
@@ -31,7 +34,7 @@ public final class BirdRig {
                 Vec3 pivot=new Vec3(values.get(0).getAsDouble(),values.get(1).getAsDouble(),values.get(2).getAsDouble());
                 var entity=new Display.ItemDisplay(EntityTypes.ITEM_DISPLAY,level);
                 entity.addTag("oak_aviary_temporary");entity.setNoGravity(true);entity.setSilent(true);entity.setRequiresPrecisePosition(true);
-                entity.setPos(position.x,position.y,position.z);
+                entity.setPos(position.x,position.y+LIGHT_ANCHOR_HEIGHT,position.z);
                 ItemStack item=new ItemStack(Items.PAPER);
                 item.set(DataComponents.ITEM_MODEL,Identifier.parse("oak_aviary:"+entry.getKey()));
                 entity.getSlot(0).set(item);
@@ -85,9 +88,9 @@ public final class BirdRig {
             }
             joints.put(part.name(),new Joint(new Vector3f(offset),new Quaternionf(rotation)));
             // Cancel the native ItemDisplayRenderer Y(pi) without changing pivots.
-            var transform=new Transformation(offset,rotation,new Vector3f(4),new Quaternionf().rotationY((float)Math.PI));
+            var transform=new Transformation(offset.sub(0,LIGHT_ANCHOR_HEIGHT,0),rotation,new Vector3f(4),new Quaternionf().rotationY((float)Math.PI));
             var access=(DisplayAccess)part.entity();access.aviary$transform(transform);access.aviary$delay(0);
-            part.entity().setPos(origin.x,origin.y,origin.z);
+            part.entity().setPos(origin.x,origin.y+LIGHT_ANCHOR_HEIGHT,origin.z);
         }
     }
     boolean animate(Vec3 origin,float yaw,int tick,String phase,double clearance) {
@@ -99,7 +102,7 @@ public final class BirdRig {
         double[] a=motion.angles;
         if(!actingPose||tick%2==0){pose(origin,yaw,a[0],a[1],motion.bank,a[2],a[3],a[4],true);actingPose=true;}
         // Root translation follows the carrier every tick; joint metadata stays at 10 Hz.
-        for(Part part:parts)part.entity().setPos(origin.x,origin.y,origin.z);
+        for(Part part:parts)part.entity().setPos(origin.x,origin.y+LIGHT_ANCHOR_HEIGHT,origin.z);
         return new Frame(origin,downstroke);
     }
     public void close(){for(Part part:parts)part.entity().discard();parts.clear();byName.clear();}

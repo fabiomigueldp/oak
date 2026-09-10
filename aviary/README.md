@@ -54,6 +54,12 @@ heading changes; its limbs still use the native riding pose, without custom grip
 or arbitrary torso animation. Camera lag is bounded and its aim permits limited
 subject movement within the frame while retaining both mirrored F5 views.
 
+Version 0.2.1 places each display's native light probe 1.25 blocks above the flight
+root, with the inverse offset in its mesh transform. This preserves geometry and
+seat alignment while preventing ground compression from sampling the solid deck's
+darkness. Lighting still follows the world's sky and block light; no full-bright
+override or resource-pack change is used.
+
 Routes above the configured horizontal threshold (500 blocks by default) use a
 fade and relocation near the destination. The exit keeps moving through fade-out;
 the entry starts moving during fade-in. Destination chunk/journal waits remain

@@ -40,6 +40,7 @@ final class RenderRegression {
                             float[] point=new float[3];
                             for(int axis=0;axis<3;axis++)point[axis]=center.get(axis).getAsFloat()+size.get(axis).getAsFloat()*(((corner>>axis)&1)==0?-.5f:.5f);
                             Vector3f nativeVertex=actual.transformPosition(new Vector3f(point[0]/4,point[1]/4,point[2]/4));
+                            nativeVertex.add(0,(float)(display.getY()-80),0);
                             Vector3f expected=new Vector3f(point[0]+pivot.get(0).getAsFloat(),point[1]+pivot.get(1).getAsFloat(),point[2]+pivot.get(2).getAsFloat());
                             if(nativeVertex.distance(expected)>.0001)throw new AssertionError("Native item basis collapsed "+id+": "+nativeVertex+" != "+expected);
                             checked++;
@@ -67,6 +68,7 @@ final class RenderRegression {
                         matrices.put(entry.getKey(),new Matrix4f(transform.getMatrix()).rotateY((float)Math.PI));
                     }
                     var seat=matrices.get("body").transformPosition(new Vector3f(0,1.47f/4,.18f/4));
+                    seat.add(0,BirdRig.LIGHT_ANCHOR_HEIGHT,0);
                     if(seat.distance(new Vector3f(0,1.47f,.18f))>.0001)throw new AssertionError("Saddle moved away from passenger");
                     for(var child:rigData.entrySet()) {
                         var definition=child.getValue().getAsJsonObject();
@@ -88,7 +90,7 @@ final class RenderRegression {
                                 var point=new Vector3f();
                                 for(int a=0;a<3;a++)point.setComponent(a,(center.get(a).getAsFloat()+size.get(a).getAsFloat()*(((corner>>a)&1)==0?-.5f:.5f))/4);
                                 entry.getValue().transformPosition(point);
-                                if(!Float.isFinite(point.y)||point.y+displays.get(entry.getKey()).getY()-80<-.035||point.y>4.3||Math.hypot(point.x,point.z)>3.7)
+                                if(!Float.isFinite(point.y)||point.y+displays.get(entry.getKey()).getY()-80<-.035||point.y+BirdRig.LIGHT_ANCHOR_HEIGHT>4.3||Math.hypot(point.x,point.z)>3.7)
                                     throw new AssertionError("Model left the clear flight envelope: "+entry.getKey()+" at "+tick+" "+point);
                                 String key=entry.getKey()+":"+cubeIndex+":"+corner;
                                 var last=previous.put(key,point);
@@ -100,6 +102,19 @@ final class RenderRegression {
                     }
                 }
                 System.out.println("AVIARY_SMOKE animation: "+animated+" vertices, attached wrists, fixed saddle and clear deck passed");
+                // Reproduce compression below the top of a solid landing deck.
+                var floor=new net.minecraft.core.BlockPos(0,79,0);
+                var previousFloor=level.getBlockState(floor);
+                try {
+                    level.setBlock(floor,net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(),3);
+                    rig.pose(new Vec3(0,79.86,0),180,0,0,0);
+                    for(var display:displays.values()) {
+                        var probe=display.getLightProbePosition(1);
+                        var block=net.minecraft.core.BlockPos.containing(probe);
+                        if(probe.y<80.5||!level.getBlockState(block).isAir())throw new AssertionError("Bird light probe entered the landing deck: "+probe);
+                    }
+                    System.out.println("AVIARY_SMOKE lighting: body probes stay above the deck during compression");
+                } finally {level.setBlock(floor,previousFloor,3);}
             } finally {rig.close();}
         }
     }

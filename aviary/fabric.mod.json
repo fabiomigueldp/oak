@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "oak_aviary",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "name": "Oak Aviary",
   "description": "Server-side condor travel for unmodified Java clients.",
   "environment": "server",
