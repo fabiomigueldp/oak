@@ -57,7 +57,7 @@ def main():
     # Runtime Minecraft textures stay outside Git and the public website.
     textures = Path('/var/lib/oak-control/avatar-assets')
     control_uid = pwd.getpwnam('oak-control').pw_uid
-    with zipfile.ZipFile('/srv/oak/map-test/data/minecraft-client-26.3-pre-3.jar') as jar:
+    with zipfile.ZipFile('/srv/oak/map-test/data/minecraft-client-26.3-rc-1.jar') as jar:
         prefix = 'assets/minecraft/textures/'
         for name in jar.namelist():
             relative = name.removeprefix(prefix)

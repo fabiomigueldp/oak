@@ -1,4 +1,4 @@
-"""Compile against the installed, unobfuscated 26.3-pre-3 server; never start it."""
+"""Compile against the installed, unobfuscated 26.3-rc-1 server; never start it."""
 import argparse
 import hashlib
 import json
@@ -31,7 +31,7 @@ with zipfile.ZipFile(apis[0]) as api:
         target = api_output / Path(name).name
         target.write_bytes(api.read(name))
         jars.append(target)
-jars.append(server / 'versions/26.3-pre-3/server-26.3-pre-3.jar')
+jars.append(server / 'versions/26.3-rc-1/server-26.3-rc-1.jar')
 classes = output / 'classes'
 classes.mkdir(exist_ok=True)
 subprocess.run([str(args.jdk / 'bin/javac'), '--release', '25', '-cp', ':'.join(map(str, jars)), '-d', str(classes), *map(str, sorted((root / 'src').rglob('*.java')))], check=True)

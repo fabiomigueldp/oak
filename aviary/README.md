@@ -1,6 +1,6 @@
 # Oak Aviary
 
-Server-side Fabric transportation for unmodified Minecraft Java 26.3-pre-3.
+Server-side Fabric transportation for unmodified Minecraft Java 26.3-rc-1.
 The optional resource pack contains original condor models and native screen
 effects. Bedrock sessions are excluded through the installed Floodgate API;
 declining the Java pack never prevents joining the server.

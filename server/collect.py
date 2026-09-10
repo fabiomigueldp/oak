@@ -15,7 +15,7 @@ while True:
                 if chat: messages.append({'time':chat[1],'player':chat[2],'text':chat[3][:1000]})
         disk=shutil.disk_usage(ROOT)
         backups=sorted((ROOT/'backups').glob('oak-*.tar.gz'))
-        data={'updated':time.time(),'online':bool(match),'players':players,'maxPlayers':int(match[2]) if match else 12,'version':'26.3-pre-3','chat':messages[-60:],'disk':{'used':disk.used,'total':disk.total,'free':disk.free},'backup':{'last':backups[-1].stat().st_mtime if backups else None,'count':len(backups),'bytes':sum(p.stat().st_size for p in backups)},'warnings':[]}
+        data={'updated':time.time(),'online':bool(match),'players':players,'maxPlayers':int(match[2]) if match else 12,'version':'26.3-rc-1','chat':messages[-60:],'disk':{'used':disk.used,'total':disk.total,'free':disk.free},'backup':{'last':backups[-1].stat().st_mtime if backups else None,'count':len(backups),'bytes':sum(p.stat().st_size for p in backups)},'warnings':[]}
         if disk.free<30*1024**3: data['warnings'].append('Pouco espaço livre na VM')
         if not backups or time.time()-backups[-1].stat().st_mtime>27*3600: data['warnings'].append('Backup atrasado')
         unified = ROOT/'control/backup-public.json'

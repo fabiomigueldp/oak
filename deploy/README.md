@@ -61,7 +61,7 @@ To save Minecraft and prioritize incremental updates around the spawn:
 ssh oracle "sudo /usr/local/sbin/oak-map-update"
 ```
 
-This external command is independent of website deployment. BlueMap currently uses resources for Minecraft `26.3-pre-3`, with a snapshot adapter maintained outside this website repository. See the [pre-3 runtime upgrade record](../docs/minecraft-pre3-upgrade.md) for crossplay validation and recovery. The website applies an early quality profile through `public/map-profile.js`, injected by Nginx before the BlueMap module on both `/map/` and `/map/index.html`. Generated map files are not modified by website deployment.
+This external command is independent of website deployment. BlueMap currently uses resources for Minecraft `26.3-rc-1`, with a snapshot adapter maintained outside this website repository. See the [rc-1 runtime upgrade record](../docs/minecraft-rc1-upgrade.md) for crossplay validation and recovery. The website applies an early quality profile through `public/map-profile.js`, injected by Nginx before the BlueMap module on both `/map/` and `/map/index.html`. Generated map files are not modified by website deployment.
 
 | Profile | Default high detail | Maximum high detail | Default low detail | Resolution multiplier |
 | --- | ---: | ---: | ---: | ---: |
