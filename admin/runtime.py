@@ -558,10 +558,24 @@ class Runtime:
         except OSError:
             return {'available': False, 'message': 'O controlador de ambiente está indisponível.', 'fields': ENVIRONMENT_RULES}
 
+    def aviary(self, port=None):
+        from .aviary import aviary_call
+        if port is not None and (not isinstance(port, str) or not re.fullmatch(r'[a-z0-9_-]{1,32}', port)):
+            raise ValueError('Invalid aviport.')
+        try:
+            return aviary_call({'action': 'check', 'port': port} if port else {'action': 'status'})
+        except OSError:
+            return {'available': False, 'message': 'Aviary is unavailable. Check that Minecraft is running.'}
+
     def preview(self, kind, params):
         params = validate(kind, params)
         result = {'kind': kind, 'params': params, 'steps': [], 'impact': '', 'requires_confirmation': True}
-        if kind == 'environment_apply':
+        if kind == 'aviary_edit':
+            current = self.aviary()
+            if not current.get('available') or current['revision'] != params['revision']:
+                raise ValueError('Aviports changed. Refresh before saving.')
+            result.update(impact='New flights use the updated aviport. No restart is needed.', steps=['Check current revision', 'Save aviport'])
+        elif kind == 'environment_apply':
             current = self.environment()
             if not current.get('available') or current['revision'] != params['revision']:
                 raise ValueError('O ambiente mudou. Atualize e revise novamente.')
@@ -834,6 +848,10 @@ class Runtime:
             if kind == 'environment_apply':
                 progress('Aplicando ambiente', 'Persisting the reviewed policy through the private control socket.')
                 return environment_call({**params, 'id': job})
+            if kind == 'aviary_edit':
+                from .aviary import aviary_call
+                progress('Saving aviport', 'Persisting the typed edit through the private Aviary socket.')
+                return aviary_call({**params, 'id': job})
             if kind == 'backup':
                 return self.backup(job, params['name'], progress, automatic=params.get('automatic', False), activity_at=params.get('activity_at', 0))
             if kind == 'verify_backup':

@@ -14,6 +14,7 @@ def operation_resources(kind):
 
 
 OPERATIONS = {
+    'aviary_edit': {'label': 'Edit aviport', 'role': 2, 'review': False, 'schedule': False},
     'backup_policy': {'label': 'Configurar backups', 'role': 2, 'review': False, 'schedule': False},
     'backup_edit': {'label': 'Editar ponto', 'role': 2, 'review': False, 'schedule': False},
     'backup_delete': {'label': 'Excluir backup', 'role': 2, 'review': True, 'schedule': False},
@@ -86,6 +87,9 @@ def validate(kind, params, role='owner'):
         raise PermissionError('This role cannot perform this operation.')
     if not isinstance(params, dict):
         raise ValueError('Operation parameters must be an object.')
+    if kind == 'aviary_edit':
+        from .aviary import validate_aviary
+        return validate_aviary(params)
     if kind == 'environment_apply':
         from .environment import validate_environment
         return validate_environment(params)

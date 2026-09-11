@@ -9,7 +9,10 @@ import java.util.concurrent.*;
 
 /** Runtime-only policy and recovery records. Never persist entities or inventory copies. */
 public final class AviaryStore implements AutoCloseable {
-    public record Port(String id,String name,String dimension,double x,double y,double z,float yaw,String owner,boolean shared) {}
+    public record Port(String id,String name,String dimension,double x,double y,double z,float yaw,String owner,boolean shared,Float departureYaw,Float arrivalYaw) {
+        public Port(String id,String name,String dimension,double x,double y,double z,float yaw,String owner,boolean shared){this(id,name,dimension,x,y,z,yaw,owner,shared,null,null);}
+    }
+    public record Preferences(Set<String> favorites,boolean quick,boolean freeCamera) {}
     public record Recovery(String player,String originDimension,double x,double y,double z,float yaw,
                            String destinationDimension,double dx,double dy,double dz,float dyaw,boolean transferred) {}
     public record Settings(boolean enabled,String packUrl,String packSha1,double shortcutDistance,int maxFlights) {}
@@ -22,6 +25,26 @@ public final class AviaryStore implements AutoCloseable {
     public Settings settings=new Settings(false,"","",500,2);
     public long revision=0;
     public String error="";
+    private final Map<UUID,Preferences> preferences=new HashMap<>();
+
+    public Preferences preferences(UUID player) {
+        return preferences.computeIfAbsent(player,id->{
+            try {
+                Path path=root.resolve("players").resolve(id+".json");
+                if(Files.exists(path)){
+                    Preferences value=GSON.fromJson(read(path),Preferences.class);
+                    if(value.favorites()!=null&&value.favorites().size()<=128)return value;
+                }
+            }catch(Exception e){System.err.println("Aviary preferences unavailable; using defaults");}
+            return new Preferences(Set.of(),false,false);
+        });
+    }
+    public void preferences(UUID player,Preferences value)throws Exception {
+        Files.createDirectories(root.resolve("players"));
+        atomic(root.resolve("players").resolve(player+".json"),GSON.toJson(value));
+        preferences.put(player,value);
+    }
+    void forget(UUID player){preferences.remove(player);}
 
     public AviaryStore() {
         try {
@@ -54,6 +77,7 @@ public final class AviaryStore implements AutoCloseable {
     public static void validate(Port p) {
         if(p==null||!p.id().matches("[a-z0-9_-]{1,32}")||p.name()==null||p.name().isBlank()||p.name().length()>48||!p.dimension().equals("minecraft:overworld")||!Double.isFinite(p.x())||!Double.isFinite(p.y())||!Double.isFinite(p.z())||!Float.isFinite(p.yaw())||Math.abs(p.x())>29999000||Math.abs(p.z())>29999000||p.y()<-60||p.y()>290)throw new IllegalArgumentException("Invalid port");
         UUID.fromString(p.owner());
+        for(Float heading:new Float[]{p.departureYaw(),p.arrivalYaw()})if(heading!=null&&(!Float.isFinite(heading)||heading< -180||heading>180))throw new IllegalArgumentException("Invalid approach heading");
     }
     private static void atomic(Path path,String text)throws Exception {
         Path pending=path.resolveSibling(path.getFileName()+".pending");

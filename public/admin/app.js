@@ -1,5 +1,6 @@
 import { renderBackups as renderRecovery, backupUpdated } from "./backups.js?v=3";
 import { renderEnvironment } from "./environment.js?v=2";
+import { renderAviary } from "./aviary.js?v=1";
 import {
   PAGES,
   ROLES,
@@ -1446,6 +1447,8 @@ async function navigate(page) {
     await {
       now: renderNow,
       world: renderWorld,
+      aviary: () => renderAviary({ el, button, field, input, select, heading, api, operation, state, can,
+        openMap: async p => { await navigate('world'); if (state.page === 'world') focusMap({ position: [p.x,p.y,p.z], dimension: p.dimension }); } }),
       environment: () =>
         renderEnvironment({
           el,

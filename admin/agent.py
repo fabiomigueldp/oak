@@ -89,6 +89,8 @@ class AgentHandler(socketserver.StreamRequestHandler):
                 result = runtime.snapshot()
             elif method == 'environment':
                 result = runtime.environment()
+            elif method == 'aviary':
+                result = runtime.aviary(data.get('port'))
             elif method == 'backups':
                 result = runtime.backups()
             elif method == 'backup_status':

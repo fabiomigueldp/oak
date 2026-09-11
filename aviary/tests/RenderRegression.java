@@ -70,6 +70,13 @@ final class RenderRegression {
                     var seat=matrices.get("body").transformPosition(new Vector3f(0,1.47f/4,.18f/4));
                     seat.add(0,BirdRig.LIGHT_ANCHOR_HEIGHT,0);
                     if(seat.distance(new Vector3f(0,1.47f,.18f))>.0001)throw new AssertionError("Saddle moved away from passenger");
+                    for(String side:java.util.List.of("left","right"))for(String[] chain:new String[][]{{"upper_leg","lower_leg"},{"lower_leg","foot"}}) {
+                        String parent=side+"_"+chain[0],child=side+"_"+chain[1];
+                        var start=rigData.getAsJsonObject(parent).getAsJsonArray("pivot");var end=rigData.getAsJsonObject(child).getAsJsonArray("pivot");
+                        Vector3f joint=new Vector3f();for(int a=0;a<3;a++)joint.setComponent(a,(end.get(a).getAsFloat()-start.get(a).getAsFloat())/4);
+                        matrices.get(parent).transformPosition(joint);
+                        if(joint.distance(matrices.get(child).transformPosition(new Vector3f()))>.0001)throw new AssertionError("Detached leg joint: "+child);
+                    }
                     for(var child:rigData.entrySet()) {
                         var definition=child.getValue().getAsJsonObject();
                         if(!definition.has("parent")||definition.get("parent").isJsonNull())continue;

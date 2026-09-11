@@ -60,6 +60,26 @@ public final class Smoke implements ModInitializer {
                     // Ensure the short route is loaded; long routes must not load the intervening terrain.
                     for(int x=-1;x<=4;x++)for(int z=-1;z<=1;z++)level.getChunkSource().getChunk(x,z,true);
                     app.store.settings=new AviaryStore.Settings(true,"https://example.invalid/pack.zip","0".repeat(40),500,2);
+                    var control=new AviaryControl(app);
+                    var edit=new com.google.gson.JsonObject();
+                    edit.addProperty("action","edit");edit.addProperty("revision",app.store.revision);edit.addProperty("port","p0");edit.addProperty("name","Port 0");edit.addProperty("shared",true);
+                    edit.addProperty("departureYaw",-90);edit.add("arrivalYaw",com.google.gson.JsonNull.INSTANCE);
+                    control.execute(edit);
+                    try{control.execute(edit);throw new AssertionError("Stale aviport edit accepted");}catch(IllegalArgumentException expected){}
+                    app.store.preferences(profile.id(),new AviaryStore.Preferences(Set.of("p48"),false,false));
+                    app.store.forget(profile.id());
+                    if(!app.store.preferences(profile.id()).favorites().contains("p48"))throw new AssertionError("Favorite did not persist");
+                    for(double distance:new double[]{40,500}) {
+                        var scene=FlightScene.route(new net.minecraft.world.phys.Vec3(0,80,0),new net.minecraft.world.phys.Vec3(distance,100,0),5);
+                        var previousVelocity=net.minecraft.world.phys.Vec3.ZERO;
+                        for(int t=1;t<=scene.ticks;t++) {
+                            var velocity=scene.at(t).subtract(scene.at(t-1));
+                            if(velocity.subtract(previousVelocity).length()>.067)throw new AssertionError("Unbounded flight acceleration");
+                            previousVelocity=velocity;
+                        }
+                        if(previousVelocity.length()>.002)throw new AssertionError("Flight snapped to rest");
+                    }
+                    System.out.println("AVIARY_SMOKE controller, revision and preferences passed");
                     // packId was derived from the initially empty configuration.
                     Aviary.packResponse(profile.id(),new ServerboundResourcePackPacket(UUID.nameUUIDFromBytes("".getBytes(StandardCharsets.UTF_8)),ServerboundResourcePackPacket.Action.SUCCESSFULLY_LOADED));
                     player.setPos(.5,80,.5);level.addNewPlayer(player);player.getInventory().setItem(0,new ItemStack(Items.DIAMOND,7));
@@ -96,8 +116,10 @@ public final class Smoke implements ModInitializer {
                     if(player.isPassenger()||!visualPassengers.isEmpty()||!player.getPostEffects().isEmpty()||Aviary.isTravelling(player.getUUID())||count(player.level())!=baseline)throw new AssertionError("Flight state leaked");
                     if(stage==1){if(!continuousFlight)throw new AssertionError("Short flight used a cut instead of its continuous route");if(Math.abs(player.getX()-48.5)>1)throw new AssertionError("Short flight did not arrive: "+player.position());if(app.fly(player,"p640")!=1)throw new AssertionError("Long flight rejected");stage=2;System.out.println("AVIARY_SMOKE long flight started");}
                     else if(stage==2){if(!movingFade)throw new AssertionError("Long flight froze before its cut");if(Math.abs(player.getX()-640.5)>1)throw new AssertionError("Long flight did not arrive");if(app.fly(player,"p0")!=1)throw new AssertionError("Return flight rejected");stage=3;}
-                    else if(stage==3){if(Math.abs(player.getX()-640.5)>1)throw new AssertionError("Abort did not restore origin");if(skinPackets<3||equipmentPackets<3||privateSeats<3)throw new AssertionError("Passenger appearance missing");if(packets.getOrDefault("ClientboundSetCameraPacket",0)<4||packets.getOrDefault("ClientboundPostEffectsPacket",0)<10)throw new AssertionError("Camera/effect packets missing: "+packets);System.out.println("AVIARY_SMOKE PASS "+packets);server.halt(false);stage=4;}
+                    else if(stage==3){if(Math.abs(player.getX()-640.5)>1)throw new AssertionError("Abort did not restore origin");if(skinPackets<3||equipmentPackets<3||privateSeats<3)throw new AssertionError("Passenger appearance missing");if(packets.getOrDefault("ClientboundSetCameraPacket",0)<4||packets.getOrDefault("ClientboundPostEffectsPacket",0)<10)throw new AssertionError("Camera/effect packets missing: "+packets);app.store.preferences(player.getUUID(),new AviaryStore.Preferences(Set.of("p0"),true,true));if(app.fly(player,"p0")!=1)throw new AssertionError("Quick free-camera flight rejected");stage=4;}
+                    else if(stage==4){if(Math.abs(player.getX()-.5)>1)throw new AssertionError("Quick free-camera flight did not arrive");System.out.println("AVIARY_SMOKE PASS "+packets);server.halt(false);stage=5;}
                 } else if(stage==3&&tick%30==0){app.journeys.get(player.getUUID()).abort("Test interruption");}
+                if(stage==4&&!visualPassengers.isEmpty())throw new AssertionError("Free camera received a duplicate passenger");
             }catch(Throwable e){e.printStackTrace();System.out.println("AVIARY_SMOKE FAIL");server.halt(false);}
         });
     }

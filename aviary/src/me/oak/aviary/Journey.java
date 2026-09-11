@@ -38,11 +38,14 @@ final class Journey {
     private boolean arrivalJournal;
     private float facing;
     private Vec3 previousBase,cameraFocus;
+    private final boolean freeCamera,quick;
+    private double shotDistance=6.3,shotAngle=135;
 
 
     Journey(Aviary app,ServerPlayer player,AviaryStore.Port origin,AviaryStore.Port destination) {
         this.app=app;this.player=player;this.origin=origin;this.destination=destination;level=player.level();current=position(origin);
         yaw=(float)Math.toDegrees(Math.atan2(destination.z()-origin.z(),destination.x()-origin.x()))-90;facing=yaw;
+        var preferences=app.store.preferences(player.getUUID());freeCamera=preferences.freeCamera();quick=preferences.quick();skip=quick;
         try {hold(chunk(position(origin)),2);hold(chunk(position(destination)),2);journal=app.store.journal(record(false));}
         catch(RuntimeException e){releaseTickets();throw e;}
     }
@@ -63,6 +66,7 @@ final class Journey {
         return null;
     }
     boolean uses(String id){return origin.id().equals(id)||destination.id().equals(id);}
+    com.google.gson.JsonObject status(){var value=new com.google.gson.JsonObject();value.addProperty("origin",origin.id());value.addProperty("destination",destination.id());value.addProperty("phase",phase);value.addProperty("seconds",age/20);return value;}
     private AviaryStore.Recovery record(boolean destinationCommitted){return new AviaryStore.Recovery(player.getUUID().toString(),origin.dimension(),origin.x(),origin.y(),origin.z(),origin.yaw(),destination.dimension(),destination.x(),destination.y(),destination.z(),destination.yaw(),destinationCommitted);}
     private void hold(ChunkPos pos,int radius) {
         for(int x=pos.x()-radius;x<=pos.x()+radius;x++)for(int z=pos.z()-radius;z<=pos.z()+radius;z++) {
@@ -72,18 +76,23 @@ final class Journey {
     }
     private void releaseTickets(){for(var chunk:tickets){int count=REFERENCES.getOrDefault(chunk,1)-1;if(count==0){REFERENCES.remove(chunk);level.getChunkSource().removeTicketWithRadius(TICKET,chunk,0);}else REFERENCES.put(chunk,count);}tickets.clear();}
     static boolean clearPort(ServerLevel level,AviaryStore.Port p) {
+        return portIssue(level,p).isEmpty();
+    }
+    static String portIssue(ServerLevel level,AviaryStore.Port p) {
         BlockPos base=BlockPos.containing(p.x(),p.y()-.05,p.z());
-        if(!level.getWorldBorder().isWithinBounds(base))return false;
+        if(!level.getWorldBorder().isWithinBounds(base))return "Outside the world border";
         for(int x=-1;x<=1;x++)for(int z=-1;z<=1;z++) {
             BlockPos floor=base.offset(x,0,z);
-            if(!level.hasChunkAt(floor)||!level.getBlockState(floor).isCollisionShapeFullBlock(level,floor))return false;
+            if(!level.hasChunkAt(floor))return "Area not loaded. Visit the aviport and check again.";
+            if(!level.getBlockState(floor).isCollisionShapeFullBlock(level,floor))return "Solid floor required at "+floor.getX()+", "+floor.getY()+", "+floor.getZ();
         }
         // Include wings, rider, and the complete vertical departure/arrival corridor.
         for(int x=-3;x<=3;x++)for(int z=-3;z<=3;z++)for(int y=0;y<24;y++) {
             BlockPos pos=BlockPos.containing(p.x()+x,p.y()+y+.05,p.z()+z);
-            if(!level.hasChunkAt(pos)||!level.getBlockState(pos).getCollisionShape(level,pos).isEmpty()||!level.getFluidState(pos).isEmpty())return false;
+            if(!level.hasChunkAt(pos))return "Area not loaded. Visit the aviport and check again.";
+            if(!level.getBlockState(pos).getCollisionShape(level,pos).isEmpty()||!level.getFluidState(pos).isEmpty())return "Clear the landing area at "+pos.getX()+", "+pos.getY()+", "+pos.getZ();
         }
-        return true;
+        return "";
     }
     private ArmorStand anchor(Vec3 pos) {
         ArmorStand entity=new ArmorStand(EntityTypes.ARMOR_STAND,level);
@@ -91,6 +100,7 @@ final class Journey {
         if(!level.addFreshEntity(entity))throw new IllegalStateException("Could not create flight anchor");return entity;
     }
     private void attachCamera() {
+        if(freeCamera)return;
         var distance=java.util.Objects.requireNonNull(camera.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.CAMERA_DISTANCE));
         // Front-view F5 reverses the view and moves backwards along it. Place
         // that camera beyond the subject, so both third-person views face it.
@@ -121,10 +131,11 @@ final class Journey {
         }
         return true;
     }
-    private FlightScene approach(Vec3 port,boolean arriving) {
+    private FlightScene approach(AviaryStore.Port definition,boolean arriving) {
+        Vec3 port=position(definition);Float preferred=arriving?definition.arrivalYaw():definition.departureYaw();
         for(double reach:new double[]{12,7,0})for(float angle:new float[]{0,45,-45,90,-90}) {
             if(reach==0&&angle!=0)continue;
-            FlightScene path=arriving?FlightScene.entry(port,yaw+angle,reach):FlightScene.exit(port,yaw+angle,reach);
+            FlightScene path=arriving?FlightScene.entry(port,(preferred==null?yaw:preferred)+angle,reach):FlightScene.exit(port,(preferred==null?yaw:preferred)+angle,reach);
             if(valid(path))return path;
         }
         throw new IllegalStateException("The aviport needs a clear approach for the bird and rider.");
@@ -133,11 +144,11 @@ final class Journey {
         Vec3 a=position(origin),d=position(destination);
         double distance=Math.hypot(a.x-d.x,a.z-d.z);
         if(distance<=app.store.settings.shortcutDistance())for(double bow:new double[]{Math.min(5,distance*.1),-Math.min(5,distance*.1),0}) {
-            FlightScene candidate=FlightScene.route(a,d,bow);
+            FlightScene candidate=FlightScene.route(a,d,bow,origin.departureYaw(),destination.arrivalYaw());
             if(valid(candidate)){routeScene=candidate;break;}
         }
-        exitScene=approach(a,false);entryScene=approach(d,true);
-        FlightScene call=approach(a,true);callScene=new FlightScene(call.a,call.b,call.c,call.d,58);
+        exitScene=approach(origin,false);entryScene=approach(destination,true);
+        FlightScene call=approach(origin,true);callScene=new FlightScene(call.a,call.b,call.c,call.d,quick?38:58);
         shortcut=routeScene==null;
         if(routeScene!=null)for(int tick=0;tick<=routeScene.ticks;tick+=8)hold(chunk(routeScene.at(tick)),1);
     }
@@ -148,7 +159,8 @@ final class Journey {
         if(!clearSweep(previousBase==null?target:previousBase,target))return false;
         double t=sceneTick/(double)activeScene.ticks;
         String beat=action.equals("flight")?(t<.2?"depart":t>.73?"arrive":"cruise"):action;
-        move(target,beat,t,activeScene.heading(sceneTick,facing));return true;
+        double beatProgress=action.equals("flight")?(t<.2?t/.2:t>.73?(t-.73)/.27:(t-.2)/.53):t;
+        move(target,beat,beatProgress,activeScene.heading(sceneTick+5,facing));return true;
     }
     void tick() {
         if(closed)return;
@@ -174,13 +186,22 @@ final class Journey {
             previousBase=target;
             if(sceneTick<callScene.ticks)return;
             current=position(origin);previousBase=null;
+            next("greet");
+        } else if(phase.equals("greet")) {
+            if(player.position().distanceTo(position(origin))>6){abort("Flight cancelled. Stay at the aviport to board.");return;}
+            Vec3 look=player.position().subtract(current);
+            float attention=net.minecraft.util.Mth.wrapDegrees((float)Math.toDegrees(Math.atan2(-look.x,look.z))-facing);
+            bird.animate(current,facing,age,"greet",0,0,0,attention,phaseTick/24.0);
+            if(phaseTick<(quick?12:24))return;
             player.teleportTo(level,current.x,current.y,current.z,Set.of(),facing,0,true);
             if(!player.startRiding(carrier,true,true))throw new IllegalStateException("Could not board");
+            FlightSound.play(player,"saddle",current,.35f,1);
             next("board");
         } else if(phase.equals("board")) {
-            move(position(origin),"board",phaseTick/52.0,(routeScene!=null?routeScene:exitScene).heading(3,yaw));
+            int duration=quick?36:52;
+            move(position(origin),"board",phaseTick/(double)duration,(routeScene!=null?routeScene:exitScene).heading(3,yaw));
             if(phaseTick==12)attachCamera();
-            if(phaseTick>=52){use(shortcut||skip?exitScene:routeScene);next(shortcut||skip?"depart":"flight");}
+            if(phaseTick>=duration){use(shortcut||skip?exitScene:routeScene);next(shortcut||skip?"depart":"flight");}
         } else if(phase.equals("depart")) {
             if(!advance("depart"))throw new IllegalStateException("Departure became obstructed.");
             if(sceneTick>=56)next("fade-out");
@@ -220,8 +241,10 @@ final class Journey {
             if(sceneTick>=activeScene.ticks)next("settle");
         } else if(phase.equals("settle")) {
             if(!clearPort(level,destination))throw new IllegalStateException("Arrival area changed");
-            move(position(destination),"settle",Math.min(1,phaseTick/28.0),facing);
-            if(phaseTick>=28&&journal.isDone()){journal.join();transferred=true;finish(destination,"Arrived at "+destination.name()+".");}
+            int duration=quick?32:48;
+            if(phaseTick==1)FlightSound.play(player,"land",current,.42f,1);
+            move(position(destination),"settle",Math.min(1,phaseTick/(double)duration),facing);
+            if(phaseTick>=duration&&journal.isDone()){journal.join();transferred=true;finish(destination,"Arrived at "+destination.name()+".");}
         }
     }
     private void move(Vec3 target,String action,double progress,float desiredYaw) {
@@ -240,14 +263,17 @@ final class Journey {
         cameraFocus=cameraFocus==null?desiredFocus:cameraFocus.lerp(desiredFocus,.16);
         Vec3 lag=new Vec3(cameraFocus.x-root.x,0,cameraFocus.z-root.z);
         if(lag.length()>1.15)lag=lag.normalize().scale(1.15);
-        double angle=Math.toRadians(facing+135),distance=6.5;
+        double desiredDistance=action.equals("board")?6.1:action.equals("settle")?6.3:action.equals("arrive")?6.8:7.0;
+        shotDistance+=(desiredDistance-shotDistance)*.045;
+        shotAngle+=((action.equals("arrive")?130:135)-shotAngle)*.035;
+        double angle=Math.toRadians(facing+shotAngle),distance=shotDistance;
         double cameraLift=Math.clamp(cameraFocus.y-root.y,-.18,.18);
         Vec3 eye=root.add(lag).add(Math.sin(angle)*distance,2.6+cameraLift,Math.cos(angle)*distance);
         Vec3 aim=root.add(lag.scale(.45)).add(0,2.0+cameraLift,0).subtract(eye);
         camera.setPos(eye.subtract(0,camera.getEyeHeight(),0));camera.setYRot((float)(Math.toDegrees(Math.atan2(aim.z,aim.x))-90));camera.setXRot((float)-Math.toDegrees(Math.atan2(aim.y,Math.hypot(aim.x,aim.z))));
         camera.setYHeadRot(camera.getYRot());
         if(passenger!=null){passenger.updateHeading(facing);if(age%10==0)passenger.updateEquipment();}
-        if(frame.downstroke())level.playSound(null,carrier.blockPosition(),net.minecraft.sounds.SoundEvents.ENDER_DRAGON_FLAP,net.minecraft.sounds.SoundSource.NEUTRAL,.12f,1.65f);
+        if(frame.downstroke())FlightSound.play(player,action.equals("depart")?"wing_power":"wing_glide",root,action.equals("depart")?.5f:.30f,1);
     }
     private void setFade(int value){setFade(value,false);}
     private void setFade(int value,boolean force) {

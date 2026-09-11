@@ -1,0 +1,28 @@
+@layer components {
+  .aviary-flight { display:flex; flex-wrap:wrap; gap:.5rem 1.5rem; align-items:center; padding:.75rem 0; border-bottom:1px solid var(--line); }
+  .aviary-layout { display:grid; grid-template-columns:minmax(220px, .7fr) minmax(0, 1.7fr); gap:2.5rem; margin-top:1.5rem; }
+  .aviary-ports { min-width:0; }
+  .aviary-ports > input { width:100%; margin-bottom:1rem; }
+  .aviary-port { display:grid; width:100%; text-align:left; gap:.35rem; padding:1rem; border:1px solid transparent; border-radius:var(--radius, 12px); background:transparent; color:var(--text); cursor:pointer; }
+  .aviary-port + .aviary-port { margin-top:.25rem; }
+  .aviary-port:hover { background:var(--panel); }
+  .aviary-port[aria-pressed="true"] { border-color:var(--line); background:var(--panel); }
+  .aviary-port strong { overflow-wrap:anywhere; }
+  .aviary-busy { color:var(--accent); }
+  .aviary-editor { min-width:0; }
+  .aviary-form { display:grid; gap:1.5rem; }
+  .aviary-form h2, .aviary-form h3, .aviary-form p { margin:0; }
+  .aviary-form h3 { font-size:1rem; }
+  .aviary-location, .aviary-check { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:1rem; }
+  .aviary-fields, .aviary-directions { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
+  .aviary-direction { display:grid; grid-template-columns:minmax(0, 1fr) 4rem; gap:1rem; align-items:center; padding-top:1.5rem; border-top:1px solid var(--line); }
+  .aviary-direction .field { grid-column:1 / -1; }
+  .aviary-compass { position:relative; width:4rem; height:4rem; border:1px solid var(--line); border-radius:50%; display:grid; place-items:center; }
+  .aviary-compass > span:first-child { position:absolute; top:-.55rem; background:var(--bg); padding:0 .25rem; color:var(--muted); font-size:.7rem; }
+  .aviary-direction-arrow { color:var(--accent); font-size:1.8rem; line-height:1; }
+  .aviary-direction-arrow[hidden] { display:none; }
+  .aviary-form > .form-actions { border-top:1px solid var(--line); padding-top:1.25rem; }
+  .aviary-form > .form-actions > p { margin-right:auto; }
+  @media(max-width:850px) { .aviary-layout { grid-template-columns:1fr; gap:2rem; } .aviary-port-list { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); } }
+  @media(max-width:460px) { .aviary-fields, .aviary-directions { grid-template-columns:1fr; } }
+}

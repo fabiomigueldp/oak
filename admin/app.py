@@ -398,6 +398,20 @@ def create_app(settings=None, agent=None, *, background=True):
         current(request)
         return await asyncio.to_thread(agent.call, 'environment')
 
+    @app.get(API + '/aviary')
+    async def aviary(request: Request):
+        current(request)
+        return await asyncio.to_thread(agent.call, 'aviary')
+
+    @app.post(API + '/aviary/check')
+    async def aviary_check(request: Request):
+        current(request, 2)
+        data = await body(request)
+        port = data.get('port')
+        if set(data) != {'port'} or not isinstance(port, str) or not re.fullmatch(r'[a-z0-9_-]{1,32}', port):
+            raise HTTPException(400, 'Invalid aviport.')
+        return await asyncio.to_thread(agent.call, 'aviary', {'port': port})
+
     @app.get(API + '/configuration')
     async def configuration(request: Request):
         current(request, 2)

@@ -1,0 +1,34 @@
+{
+  "wing_power": {
+    "sounds": [
+      {
+        "name": "oak_aviary:wing_power",
+        "attenuation_distance": 12
+      }
+    ]
+  },
+  "wing_glide": {
+    "sounds": [
+      {
+        "name": "oak_aviary:wing_glide",
+        "attenuation_distance": 12
+      }
+    ]
+  },
+  "saddle": {
+    "sounds": [
+      {
+        "name": "oak_aviary:saddle",
+        "attenuation_distance": 12
+      }
+    ]
+  },
+  "land": {
+    "sounds": [
+      {
+        "name": "oak_aviary:land",
+        "attenuation_distance": 12
+      }
+    ]
+  }
+}

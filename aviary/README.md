@@ -1,5 +1,7 @@
 # Oak Aviary
 
+Current release: [0.3.0 travel, motion and Oak controls](RELEASE-0.3.md).
+
 Server-side Fabric transportation for unmodified Minecraft Java 26.3-rc-1.
 The optional resource pack contains original condor models and native screen
 effects. Bedrock sessions are excluded through the installed Floodgate API;
@@ -26,14 +28,14 @@ Stand at its center, then use:
 | `/aviary port remove spawn` | Administrator: remove a registration |
 | `/aviary status` | Administrator: inspect service state |
 
-Hold Shift during travel to request a safe skip. Travel starts only within four
+Hold Shift for 0.4 seconds to request a safe skip. Travel starts only within six
 blocks of an accessible aviport. Private registrations control route access;
 they are not a land-claim or block-protection system. No structures are placed
 automatically. Only overworld routes are supported in this release.
 
 ## Implementation
 
-The bird has twelve native item displays and 100 cuboids. The real player rides an
+The bird has sixteen native item displays and 110 cuboids. The real player rides an
 invisible carrier; a separate invisible anchor supplies camera position. Because
 the vanilla client hides its local player with an external camera, an owner-only
 native mannequin renders the passenger's skin and equipment. It is never added to
@@ -72,8 +74,8 @@ ports are preserved; no surrounding terrain is cleared or generated for a shot.
 Both planning and each actual movement step check swept volumes against blocks,
 fluids, loaded chunks and the world border. Route tickets are bounded,
 reference-counted and released after landing. The default limit is two concurrent
-flights, configurable up to four. Twelve displays increase tracking/metadata work
-relative to the earlier eight-part rig; client frame time and multi-viewer network
+flights, configurable up to four. Sixteen displays increase tracking/metadata work
+relative to the earlier rig; client frame time and multi-viewer network
 cost have not been benchmarked. There is no mob AI, per-feather simulation or
 full aerodynamic solver. These budgets are not a guarantee for every client.
 
@@ -166,6 +168,6 @@ in-game acceptance pass. The server cannot prove that a resource-pack post effec
 rendered on a client's GPU. Do not describe the current build as a verified AAA
 cinematic or promise invisible cuts under every connection condition.
 
-Oak's existing console can inspect the service with `aviary status`. A dedicated
-Oak route editor, map destination selection, more varied approach shots and
-additional birds remain separate work; they are not implemented by this release.
+Oak's console can inspect the service with `aviary status`. The Aviary page now
+edits ports and inspects landing areas. In-game map destination selection and
+additional bird species remain outside this release.

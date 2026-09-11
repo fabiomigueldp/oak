@@ -24,7 +24,7 @@ final class BirdMotion {
         } catch(Exception e){throw new ExceptionInInitializerError(e);}
     }
     final double[] angles=new double[CHANNELS];
-    double heave,bank,pitch,headYaw,sweep,fold,contact;
+    double heave,bank,pitch,headYaw,sweep,fold,contact,tailYaw,brake,tuck;
     private double airborne,power,cycle,heaveVelocity;
     private int previousTick=-1;
     private String previousAction="";
@@ -33,13 +33,18 @@ final class BirdMotion {
         return update(tick,phase,clearance,.6,0,0,0);
     }
     boolean update(int tick,String phase,double clearance,double speed,double climb,double turn,double progress) {
-        boolean grounded=phase.equals("board")||phase.equals("settle");
+        progress=Math.clamp(progress,0,1);
+        boolean grounded=phase.equals("board")||phase.equals("settle")||phase.equals("greet");
         double airTarget=grounded?0:Math.max(FlightPath.ease(clearance/2.2),phase.equals("depart")?.8:0);
         if(previousAction.equals("board")&&phase.equals("depart")){cycle=Math.ceil(cycle);airborne=1;}
-        double demand=phase.equals("cruise")?Math.clamp(.06+Math.max(0,climb)*5+Math.max(0,.45-speed)*.35,0,1)
-            :phase.equals("arrive")||phase.equals("call")?.55:1;
+        // Quiet glides alternate with complete effort bouts, never random joint noise.
+        double demand=phase.equals("cruise")?Math.clamp(Math.max(0,climb)*4+Math.max(0,.35-speed)*.35,0,1)
+            :phase.equals("arrive")||phase.equals("call")?.35+.25*(1-progress):1;
+        if(phase.equals("cruise")&&demand<.28)demand=0;
         int elapsed=previousTick<0?1:Math.clamp(tick-previousTick,0,4);
         double blend=1-Math.exp(-elapsed/8.0);
+        double tuckTarget=phase.equals("board")?1-FlightPath.ease((progress-.55)/.45):phase.equals("settle")?FlightPath.ease((progress-.28)/.72):phase.equals("greet")?.75:0;
+        tuck+=(tuckTarget-tuck)*blend;
         if(previousTick<0){airborne=airTarget;power=demand;}
         else {airborne+=(airTarget-airborne)*blend;power+=(demand-power)*blend;}
         double oldCycle=cycle;
@@ -58,15 +63,20 @@ final class BirdMotion {
         double targetPitch=Math.clamp(climb*.5,-.12,.16)*airborne;
         if(phase.equals("arrive"))targetPitch+=.13*Math.sin(Math.PI*progress)*airborne;
         bank+=(targetBank-bank)*blend;pitch+=(targetPitch-pitch)*blend;
-        double look=grounded?.24*Math.sin(Math.PI*progress):Math.clamp(-turn*.1,-.22,.22);
-        headYaw+=(look-headYaw)*blend;
+        double look=grounded?.28*Math.sin(Math.PI*FlightPath.ease(Math.min(1,progress/.7))):Math.clamp(-turn*.16,-.28,.28);
+        if(phase.equals("greet"))look=Math.clamp(Math.toRadians(-turn),-.45,.45);
+        headYaw+=(look-headYaw)*(1-Math.exp(-elapsed/3.5));
+        tailYaw+=(Math.clamp(turn*.075,-.15,.15)-tailYaw)*(1-Math.exp(-elapsed/13.0));
+        double braking=(phase.equals("arrive")||phase.equals("call"))?Math.sin(Math.PI*progress):0;
+        brake+=(braking-brake)*blend;
         angles[2]-=pitch*.65;
-        angles[3]+=-pitch*.4+bank*.2;
+        angles[3]+=-pitch*.4+bank*.2+brake*.16;
         fold=FlightPath.ease((Math.sin((cycle%1-.38)*Math.PI/.62)))*power*airborne;
         sweep=.22*fold;
         boolean downstroke=Math.floor(oldCycle-.16)!=Math.floor(cycle-.16)&&airborne>.4&&power>.35;
-        double crouch=phase.equals("board")?-.035*Math.sin(Math.PI*Math.min(1,progress/.35))-.11*FlightPath.ease((progress-.55)/.45)
-            :phase.equals("settle")?-.11*Math.sin(progress*Math.PI*2)*Math.exp(-progress*4):0;
+        double crouch=phase.equals("board")?-.045*Math.sin(Math.PI*Math.min(1,progress/.35))-.11*FlightPath.ease((progress-.55)/.45)
+            :phase.equals("settle")?-.12*Math.sin(Math.min(1,progress/.45)*Math.PI)*Math.exp(-progress*2)
+            :phase.equals("depart")?.065*Math.sin(Math.PI*Math.min(1,progress/.16)):0;
         for(int i=0;i<elapsed;i++) {
             if(i==0&&downstroke)heaveVelocity+=.025*power;
             heaveVelocity+=(crouch-heave)*.08-heaveVelocity*.30;

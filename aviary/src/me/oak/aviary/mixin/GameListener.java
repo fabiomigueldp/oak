@@ -20,7 +20,7 @@ public abstract class GameListener {
     @Inject(method="handlePlayerInput",at=@At("HEAD"),cancellable=true)
     private void aviary$input(net.minecraft.network.protocol.game.ServerboundPlayerInputPacket packet,CallbackInfo ci) {
         if(Aviary.isTravelling(player.getUUID())) {
-            if(packet.input().shift())Aviary.requestSkip(player.getUUID());
+            Aviary.shiftInput(player.getUUID(),packet.input().shift());
             ci.cancel();
         }
     }

@@ -16,7 +16,7 @@ import org.joml.Vector3f;
 import java.io.InputStreamReader;
 import java.util.*;
 
-/** Twelve articulated native item displays, exported from the authored Blender scene. */
+/** Articulated native item displays, exported from the authored Blender scene. */
 public final class BirdRig {
     // Native lighting samples the display entity, not its transformed mesh.
     // Keep that probe in the body while the flight root compresses into the deck.
@@ -58,16 +58,18 @@ public final class BirdRig {
         Quaternionf rollPitch=new Quaternionf().rotationZ((float)bank).rotateX((float)(acting?motion.pitch:0));
         Vector3f seat=new Vector3f(0,1.47f,.18f);
         Map<String,Joint> joints=new HashMap<>();
+        Map<String,Joint> legs=acting?legJoints(direction,rollPitch,seat,feet):Map.of();
         for(Part part:parts) {
             int sign=part.name().startsWith("left")?-1:1;
             Quaternionf joint=new Quaternionf();
             double steering=acting?motion.bank*.35:0,sweep=acting?motion.sweep:0;
-            if(part.name().endsWith("_wing"))joint.rotateZ((float)(sign*wing+steering)).rotateY((float)(-sign*sweep*.35));
-            if(part.name().endsWith("_elbow"))joint.rotateZ((float)(sign*tip*.55)).rotateY((float)(-sign*sweep));
-            if(part.name().endsWith("_tip"))joint.rotateZ((float)(sign*tip*.45)).rotateY((float)(-sign*sweep*.45));
+            double tuck=acting?motion.tuck:0;
+            if(part.name().endsWith("_wing"))joint.rotateZ((float)(sign*wing+steering)).rotateY((float)(-sign*(sweep*.35+tuck*1.05)));
+            if(part.name().endsWith("_elbow"))joint.rotateZ((float)(sign*tip*.55)).rotateY((float)(sign*(tuck*1.30-sweep)));
+            if(part.name().endsWith("_tip"))joint.rotateZ((float)(sign*tip*.45)).rotateY((float)(-sign*(sweep*.45+tuck*.85)));
             if(part.name().equals("neck"))joint.rotateY((float)(acting?motion.headYaw*.45:0)).rotateX((float)(head*.3));
             if(part.name().equals("head"))joint.rotateY((float)(acting?motion.headYaw*.55:0)).rotateX((float)(head*.7));
-            if(part.name().equals("tail"))joint.rotationX((float)tail);
+            if(part.name().equals("tail"))joint.rotationX((float)tail).rotateY((float)(acting?motion.tailYaw:0));
             if(part.name().endsWith("_foot"))joint.rotationX((float)(feet*(acting?1-motion.contact:1)*(sign<0?.93:1)));
             Vector3f local=new Vector3f((float)part.pivot().x,(float)part.pivot().y,(float)part.pivot().z);
             Quaternionf rotation;
@@ -80,11 +82,7 @@ public final class BirdRig {
             } else {
                 offset=new Vector3f(local).sub(seat).rotate(rollPitch).add(seat).rotate(direction);
                 rotation=new Quaternionf(direction).mul(rollPitch).mul(joint);
-                if(acting&&part.name().endsWith("_foot")) {
-                    Vector3f planted=new Vector3f(local).rotate(direction).add(0,(float)-motion.heave,0);
-                    offset.lerp(planted,(float)motion.contact);
-                    rotation.slerp(direction,(float)motion.contact);
-                }
+                if(legs.containsKey(part.name())){Joint solved=legs.get(part.name());offset=new Vector3f(solved.position());rotation=new Quaternionf(solved.rotation());}
             }
             joints.put(part.name(),new Joint(new Vector3f(offset),new Quaternionf(rotation)));
             // Cancel the native ItemDisplayRenderer Y(pi) without changing pivots.
@@ -92,6 +90,37 @@ public final class BirdRig {
             var access=(DisplayAccess)part.entity();access.aviary$transform(transform);access.aviary$delay(0);
             part.entity().setPos(origin.x,origin.y+LIGHT_ANCHOR_HEIGHT,origin.z);
         }
+    }
+    private Vector3f pivot(String name){Vec3 p=byName.get(name).pivot();return new Vector3f((float)p.x,(float)p.y,(float)p.z);}
+    private Map<String,Joint> legJoints(Quaternionf direction,Quaternionf body,Vector3f seat,double feet){
+        Map<String,Joint> solved=new HashMap<>();
+        for(String side:List.of("left","right")) {
+            String upper=side+"_upper_leg",lower=side+"_lower_leg",foot=side+"_foot";
+            if(!byName.containsKey(upper))continue;
+            Vector3f authoredHip=pivot(upper),authoredKnee=pivot(lower),authoredFoot=pivot(foot);
+            Vector3f hip=new Vector3f(authoredHip).sub(seat).rotate(body).add(seat).rotate(direction);
+            Quaternionf tucked=new Quaternionf(direction).mul(body).rotateX((float)feet);
+            Vector3f goal=new Vector3f(authoredFoot).sub(authoredHip).rotate(tucked).add(hip);
+            Vector3f planted=new Vector3f(authoredFoot).rotate(direction).add(0,(float)-motion.heave,0);
+            goal.lerp(planted,(float)motion.contact);
+            float upperLength=authoredHip.distance(authoredKnee),lowerLength=authoredKnee.distance(authoredFoot);
+            Vector3f axis=new Vector3f(goal).sub(hip);float distance=Math.max(.001f,axis.length());axis.div(distance);
+            float reach=Math.clamp(distance,Math.abs(upperLength-lowerLength)+.001f,upperLength+lowerLength-.001f);
+            float along=(upperLength*upperLength-lowerLength*lowerLength+reach*reach)/(2*reach);
+            float bend=(float)Math.sqrt(Math.max(0,upperLength*upperLength-along*along));
+            Vector3f pole=new Vector3f(0,0,1).rotate(direction);pole.sub(new Vector3f(axis).mul(pole.dot(axis))).normalize();
+            Vector3f knee=new Vector3f(hip).add(new Vector3f(axis).mul(along)).add(pole.mul(bend));
+            Vector3f end=new Vector3f(hip).add(new Vector3f(axis).mul(reach));
+            solved.put(upper,bone(hip,knee,authoredHip,authoredKnee,direction));
+            solved.put(lower,bone(knee,end,authoredKnee,authoredFoot,direction));
+            solved.put(foot,new Joint(end,new Quaternionf(tucked).slerp(direction,(float)motion.contact)));
+        }
+        return solved;
+    }
+    private Joint bone(Vector3f start,Vector3f end,Vector3f authoredStart,Vector3f authoredEnd,Quaternionf direction){
+        Vector3f original=new Vector3f(authoredEnd).sub(authoredStart).rotate(direction);
+        Quaternionf rotation=new Quaternionf().rotationTo(original,new Vector3f(end).sub(start)).mul(direction);
+        return new Joint(start,rotation);
     }
     boolean animate(Vec3 origin,float yaw,int tick,String phase,double clearance) {
         return animate(origin,yaw,tick,phase,clearance,.6,0,0,0).downstroke();

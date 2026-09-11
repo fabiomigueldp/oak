@@ -19,6 +19,10 @@ class DemoAgent:
         self.pending_restart = False
         self.last_save = self.started - 600
         self.receipts = {}
+        self.aviary_state = {'available': True, 'enabled': True, 'revision': 0, 'error': '', 'maxFlights': 2, 'flights': [],
+            'ports': [{'id': ident, 'name': name, 'dimension': 'minecraft:overworld', 'x': x, 'y': 80, 'z': z, 'yaw': 0,
+                       'owner': '00000000-0000-0000-0000-000000000001', 'shared': True, 'busy': False, 'departureYaw': None, 'arrivalYaw': None}
+                      for ident, name, x, z in [('harbor', 'Harbor', 16, 56), ('ridge', 'Ridge', -96, 184)]]}
         self.environment_state = {'available': True, 'revision': 0, 'policy': copy.deepcopy(DEFAULTS),
             'fields': RULES, 'drift': False, 'error': '', 'clock': 6000, 'rate': 1, 'paused': False,
             'weather': 'clear', 'next_weather_seconds': 0,
@@ -68,6 +72,13 @@ class DemoAgent:
                 env['weather'] = 'clear'
             env['sampled_at'] = time.time()
             return copy.deepcopy(env)
+        if method == 'aviary':
+            if data.get('port'):
+                port = next((p for p in self.aviary_state['ports'] if p['id'] == data['port']), None)
+                if not port:
+                    raise ValueError('Aviport no longer exists.')
+                port['check'] = {'clear': True, 'message': 'Landing area clear (demo)', 'checked_at': time.time()}
+            return {**copy.deepcopy(self.aviary_state), 'sampled_at': time.time()}
         if method == 'logs':
             return {'service': data['service'], 'lines': ['[demonstration] Server ready. No production commands are sent.', '[demonstration] World save completed.'], 'sampled_at': time.time()}
         if method == 'receipt':
@@ -83,6 +94,8 @@ class DemoAgent:
                 if params['revision'] != self.environment_state['revision']:
                     raise ValueError('Environment changed. Reload and review again.')
                 preview['changes'] = environment_changes(self.environment_state, params)
+            if kind == 'aviary_edit' and params['revision'] != self.aviary_state['revision']:
+                raise ValueError('Aviports changed. Refresh before saving.')
             if kind == 'console':
                 preview['command'] = params['command']
             if kind == 'restore_backup':
@@ -109,6 +122,16 @@ class DemoAgent:
                 point.update({k:v for k,v in params.items() if k != 'backup'})
             elif kind == 'backup_delete':
                 self.points = [p for p in self.points if p['id'] != params['backup']]
+            elif kind == 'aviary_edit':
+                if params['revision'] != self.aviary_state['revision']:
+                    raise ValueError('Aviports changed. Refresh before saving.')
+                port = next((p for p in self.aviary_state['ports'] if p['id'] == params['port']), None)
+                if not port or port['busy']:
+                    raise ValueError('Aviport unavailable.')
+                port.update({k: params[k] for k in ('name', 'shared', 'departureYaw', 'arrivalYaw')})
+                port.pop('check', None)
+                self.aviary_state['revision'] += 1
+                result.update(copy.deepcopy(self.aviary_state))
             elif kind == 'environment_apply':
                 env = self.environment_state
                 if params['revision'] != env['revision']:

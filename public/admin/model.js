@@ -3,6 +3,7 @@ export const PAGES = {
   now: "Agora",
   world: "Mundo",
   environment: "Ambiente",
+  aviary: "Aviary",
   players: "Jogadores",
   backups: "Backups",
   operations: "Operações",

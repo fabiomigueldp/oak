@@ -198,8 +198,17 @@ part('tail', (0, .68, .75))
 for i in range(5):
     cube('tail', 'Tail feather', ((i-2)*.24, .66-abs(i-2)*.012, 1.25+.08*(2-abs(i-2))), (.27, .12, 1.02+.06*(2-abs(i-2))), 'feather' if i%2 else 'feather_light')
 for side in (-1, 1):
-    group = part(('left' if side < 0 else 'right')+'_foot', (side*.33, .52, .05))
-    cube(group, 'Leg', (side*.33, .35, -.14), (.22, .5, .25), 'gold')
+    name = 'left' if side < 0 else 'right'
+    hip, knee, ankle = (side*.33,.62,.10), (side*.33,.40,.30), (side*.33,.14,-.20)
+    for suffix, start, end in [('upper_leg',hip,knee), ('lower_leg',knee,ankle)]:
+        group=part(name+'_'+suffix,start)
+        # Overlapping cuboids follow the authored bone without custom mesh support.
+        for segment in range(3):
+            t=(segment+.5)/3
+            center=tuple(start[i]+(end[i]-start[i])*t for i in range(3))
+            size=tuple(abs(end[i]-start[i])/3+.14 for i in range(3))
+            cube(group, name+' '+suffix, center, size, 'feather_light' if suffix=='upper_leg' else 'gold')
+    group = part(name+'_foot', ankle)
     for i in range(3):
         cube(group, 'Toe', (side*.33+(i-1)*.12, .07, -.36), (.105, .14, .55), 'gold')
         cube(group, 'Claw', (side*.33+(i-1)*.12, .04, -.66), (.105, .09, .16), 'talon')
