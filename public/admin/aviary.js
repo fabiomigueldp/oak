@@ -17,18 +17,26 @@ export async function renderAviary(ctx) {
   const editor = el('section', 'aviary-editor');
   layout.append(sidebar, editor); root.append(layout);
   let selected = null, draft = null, revision = 0, baseline = '', pending = null;
+  let listSignature = '';
   let syncForm = () => {};
   const editable = can('aviary_edit');
   const coordinates = p => [p.x, p.y, p.z].map(Math.round).join(', ');
   function report(message) { notice.textContent = message; notice.hidden = !message; }
   function list() {
     const matches = data.ports.filter(p => `${p.name} ${p.id}`.toLowerCase().includes(query.value.toLowerCase()));
-    ports.replaceChildren(...matches.map(p => {
+    const signature = JSON.stringify([selected, matches.map(p => [p.id,p.name,p.x,p.y,p.z,p.busy,p.shared])]);
+    if (signature !== listSignature) {
+      const focused = ports.contains(document.activeElement) ? document.activeElement.dataset.port : null;
+      listSignature = signature;
+      ports.replaceChildren(...matches.map(p => {
       const b = button('', () => choose(p.id), 'aviary-port');
+      b.dataset.port = p.id;
       b.replaceChildren(el('strong', '', p.name), el('span', 'muted', coordinates(p)), el('small', p.busy ? 'aviary-busy' : 'muted', p.busy ? 'In use' : p.shared ? 'Shared' : 'Private'));
       b.setAttribute('aria-pressed', String(selected === p.id)); return b;
-    }));
-    if (!matches.length) ports.append(el('p', 'muted', data.ports.length ? 'No matching aviports.' : 'Create an aviport in the game with /aviary claim home.'));
+      }));
+      if (!matches.length) ports.append(el('p', 'muted', data.ports.length ? 'No matching aviports.' : 'Create an aviport in the game with /aviary claim home.'));
+      if (focused) [...ports.querySelectorAll('button')].find(b => b.dataset.port === focused)?.focus({ preventScroll: true });
+    }
     live.textContent = data.error || (!data.enabled ? 'Travel disabled' : `${data.ports.length} aviports · ${data.flights.length} of ${data.maxFlights} birds in flight`);
     const phases = { prepare:'Preparing', call:'Approaching', greet:'Boarding', board:'Boarding', depart:'Taking off', flight:'Flying', 'fade-out':'Departing', transfer:'In transit', 'arrival-load':'In transit', 'fade-in':'Approaching', arrive:'Landing', settle:'Landed' };
     const portName = id => data.ports.find(p => p.id === id)?.name || id;

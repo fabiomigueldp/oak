@@ -1,6 +1,6 @@
 import { renderBackups as renderRecovery, backupUpdated } from "./backups.js?v=3";
 import { renderEnvironment } from "./environment.js?v=2";
-import { renderAviary } from "./aviary.js?v=1";
+import { renderAviary } from "./aviary.js?v=2";
 import {
   PAGES,
   ROLES,
