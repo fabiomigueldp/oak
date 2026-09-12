@@ -5,7 +5,7 @@ read-only; environment writes use their own owner-only socket and root agent.
 See [World environment controller](../docs/world-environment.md) for behavior,
 persistence, supported controls, and isolated integration verification.
 
-Optional server-only Fabric mod pinned to Minecraft **26.3-rc-1**, Fabric Loader
+Optional server-only Fabric mod pinned to Minecraft **26.3-rc-2**, Fabric Loader
 0.19.5+, and the installed Fabric lifecycle API. Compile with Java 25 against the
 installed unobfuscated server and modules extracted from the installed Fabric API
 archive. Old processed-module caches are excluded from compilation. No remapper or

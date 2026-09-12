@@ -19,7 +19,7 @@ release note or model file by default.
 
 ## Boundaries
 
-- Pinned build: Minecraft `26.3-rc-1`, Fabric loader `0.19.5`, Java 25.
+- Pinned build: Minecraft `26.3-rc-2`, Fabric loader `0.19.5`, Java 25.
   [Metadata](fabric.mod.json) and [build script](build.py) define compatibility;
   query the installation before assuming it matches the checkout.
 - Overworld only. New destinations need a safe support and adjacent dismount;
