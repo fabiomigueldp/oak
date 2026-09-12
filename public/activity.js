@@ -239,6 +239,7 @@ async function load({ quiet = false } = {}) {
     feedback(timeline ? 'Sem atualização. Exibindo os últimos registros.' : 'Os registros ainda não estão disponíveis.', true);
     if (!timeline) {
       el('player-rows').replaceChildren();
+      el('concurrency-row').hidden = true;
       el('player-count').textContent = 'Jogadores';
       showEmpty('Aguardando os primeiros registros', 'As próximas sessões aparecerão aqui.');
     }
@@ -253,9 +254,10 @@ async function load({ quiet = false } = {}) {
 
 function updateFreshness(error = false) {
   const fresh = !error && timeline?.collecting && Date.now() / 1000 - timeline.updated < 90;
-  el('collection-state').dataset.state = fresh ? 'live' : error ? 'error' : 'stale';
-  el('collection-state').hidden = fresh && !followToday;
-  el('collection-state').textContent = fresh ? timeline.onlineCount ? `${timeline.onlineCount} no jogo` : 'Ao vivo' : timeline?.updated ? `Até ${time(timeline.updated)}` : 'Sem registros';
+  const state = el('collection-state');
+  state.dataset.state = error ? 'error' : 'stale';
+  state.hidden = fresh;
+  state.textContent = fresh ? '' : timeline?.updated ? `Atualizado às ${time(timeline.updated)}` : 'Sem registros';
 }
 
 function place(element, start, end) {
@@ -285,7 +287,9 @@ function decorateTrack(track) {
 
 function showEmpty(title, description) {
   el('timeline-empty').hidden = false;
-  el('empty-title').textContent = title; el('empty-description').textContent = description;
+  el('empty-title').textContent = title;
+  el('empty-description').textContent = description || '';
+  el('empty-description').hidden = !description;
 }
 
 function renderAxis() {
@@ -311,6 +315,7 @@ function renderAxis() {
 
 function renderTimeline() {
   renderAxis();
+  el('concurrency-row').hidden = timeline.players.length === 0;
   el('player-count').textContent = `${timeline.players.length} ${timeline.players.length === 1 ? 'jogador' : 'jogadores'}`;
   el('peak-caption').textContent = timeline.peak > 1 ? `${timeline.peak} juntos no pico` : '';
   el('gap-legend').hidden = !timeline.gaps.some(([start, end]) => end - start > 90);
@@ -373,7 +378,7 @@ function renderPlayers() {
   el('timeline-empty').hidden = players.length > 0;
   if (!players.length) {
     showEmpty(timeline.coverage.length ? 'Ninguém passou por aqui' : 'Sem registros neste período',
-      timeline.coverage.length ? 'Nenhuma sessão nos horários observados.' : 'A coleta ainda não estava disponível.');
+      timeline.coverage.length ? '' : 'A coleta ainda não estava disponível.');
   }
   el('more-players').hidden = players.length <= rowsLimit;
   if (selected) {

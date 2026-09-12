@@ -10,8 +10,8 @@
   <link rel="icon" href="/brand/favicon.ico?v=1" sizes="any">
   <link rel="apple-touch-icon" href="/brand/oak-180.png?v=1">
   <link rel="stylesheet" href="/style.css?v=8">
-  <link rel="stylesheet" href="/activity.css?v=2">
-  <script type="module" src="/activity.js?v=2"></script>
+  <link rel="stylesheet" href="/activity.css?v=3">
+  <script type="module" src="/activity.js?v=3"></script>
 </head>
 <body class="activity-page">
   <a class="skip" href="#main">Ir para a atividade</a>
@@ -23,7 +23,7 @@
     <section class="activity-surface" aria-label="Atividade dos jogadores">
       <div class="activity-heading">
         <h1 id="period-title">Últimas 24 horas</h1>
-        <div class="period-actions"><span id="collection-state" class="collection-state" role="status"></span><button id="today" type="button" hidden>Agora</button><button id="week-view" type="button" aria-pressed="false">7 dias</button></div>
+        <div class="period-actions"><span id="collection-state" class="collection-state" role="status" hidden></span><button id="today" type="button" hidden>Agora</button><button id="week-view" type="button" aria-pressed="false">7 dias</button></div>
       </div>
       <nav class="day-navigation" aria-label="Dias de atividade">
         <button type="button" id="previous" class="date-arrow" aria-label="Semana anterior"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>
@@ -35,8 +35,8 @@
       <svg width="0" height="0" class="pattern-defs" aria-hidden="true"><defs><pattern id="gap-pattern" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M-1 1L1-1M0 6L6 0M5 7L7 5" stroke="currentColor" stroke-opacity=".12" stroke-width=".6"/></pattern></defs></svg>
       <div id="timeline-scroll" class="timeline-scroll" tabindex="0" role="region" aria-label="Linha do tempo dos jogadores" aria-describedby="timeline-help" aria-busy="true">
         <div class="timeline-grid" id="timeline-grid">
-          <div class="concurrency-row"><div class="concurrency-caption"><span id="player-count">Jogadores</span><span id="peak-caption"></span></div><div class="concurrency-plot" id="concurrency-plot" aria-hidden="true"></div></div>
-          <div class="chart-axis"><div class="axis-caption">Brasília</div><div id="time-axis" class="time-axis"></div></div>
+          <div class="concurrency-row" id="concurrency-row"><div class="concurrency-caption"><span id="player-count">Jogadores</span><span id="peak-caption"></span></div><div class="concurrency-plot" id="concurrency-plot" aria-hidden="true"></div></div>
+          <div class="chart-axis"><div class="axis-caption" aria-hidden="true"></div><div id="time-axis" class="time-axis"></div></div>
           <div id="player-rows"><div class="timeline-skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div>
         </div>
       </div>

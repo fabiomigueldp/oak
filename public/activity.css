@@ -11,10 +11,8 @@
 .period-actions button { min-height: 44px; padding: 8px 12px; border-color: transparent; font-size: 12px; color: var(--muted); border-radius: 7px; }
 .period-actions button:hover { color: var(--text); background: var(--field); }
 .period-actions button[aria-pressed="true"] { color: var(--accent); background: var(--field); }
-.collection-state { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; color: var(--muted); font-size: 11px; }
+.collection-state { white-space: nowrap; color: var(--muted); font-size: 11px; }
 .collection-state:empty { display: none; }
-.collection-state::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-.collection-state[data-state="live"] { color: var(--accent); }
 .collection-state[data-state="error"] { color: var(--warning); }
 .day-navigation { display: grid; grid-template-columns: 44px minmax(0,1fr) 44px; align-items: center; padding: 0 16px 18px; }
 .day-strip { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); }
