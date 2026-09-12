@@ -1,7 +1,10 @@
 """Package isolation and service lifecycle checks; all host operations are mocked."""
 from contextlib import nullcontext
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -82,6 +85,17 @@ class PackageTests(unittest.TestCase):
 
 
 class ServiceTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('systemd-analyze'), 'systemd verification requires Linux')
+    def test_generated_unit_passes_real_systemd_parser(self):
+        with tempfile.TemporaryDirectory(prefix='oak service ') as directory:
+            root = Path(directory)
+            services = Services(root, unit_root=root / 'units', run=Mock(return_value=''))
+            result = services.call('services.upsert', {
+                'name': 'parser-test', 'kind': 'python', 'source': 'print("isolated parser test")', 'cwd': str(root),
+            }, 'test')
+            checked = subprocess.run(['systemd-analyze', 'verify', str(root / 'units' / result['unit'])], capture_output=True, text=True)
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+
     def test_python_service_uses_daemon_interpreter_and_sdk_path(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

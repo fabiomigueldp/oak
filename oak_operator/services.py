@@ -48,7 +48,7 @@ class Services:
                 atomic(script, source.encode())
                 executable = {'shell': '/bin/bash', 'python': '"' + sys.executable + '"', 'javascript': '/usr/bin/env node'}[kind]
                 content = ('[Unit]\nDescription=Oak operator service ' + name + '\nAfter=network.target\n\n'
-                           '[Service]\nType=simple\nUser=root\nWorkingDirectory="' + cwd + '"\n'
+                           '[Service]\nType=simple\nUser=root\nWorkingDirectory=' + cwd + '\n'
                            'Environment="PYTHONPATH=' + str(Path(__file__).resolve().parents[1]) + '"\n'
                            'ExecStart=' + executable + ' "' + str(script) + '"\n'
                            'Restart=on-failure\nRestartSec=5\nKillMode=control-group\nTimeoutStopSec=30\nUMask=0077\n\n'
