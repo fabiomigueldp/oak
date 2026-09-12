@@ -1,7 +1,7 @@
 # Oak aviports: cinematic travel feasibility
 
-Status: original design study; see [the implementation and acceptance record](../aviary/README.md)
-for the current 26.3-pre-3 build. Some proposals below remain future work. Original investigation:
+Status: original design study; see [the current documentation index](../aviary/README.md)
+for implemented behavior and compatibility. Some proposals below remain future work. Original investigation:
 2026-09-08, against installed Minecraft Java 26.3-pre-2 server/client jars. Scope:
 unmodified Java clients with a server-delivered resource pack. Bedrock cinematic
 support is explicitly out of scope; the existing Bedrock login path must remain usable.

@@ -1,5 +1,8 @@
 # Aviary 0.4.0
 
+Feature record for this release. Start with the [documentation index](README.md)
+for current usage, development and operations; this file is not a deployment status.
+
 ## Perches and whistles
 
 Perch and Whistle are reusable gameplay objects backed by native item IDs and

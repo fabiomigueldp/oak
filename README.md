@@ -7,6 +7,11 @@ local recovery points, reviewed operations, settings and role-based access.
 See the [administration guide](docs/admin-control.md) for the demo, installation,
 tests, recovery procedures and deliberately deferred features.
 
+**Aviary** adds crafted perches, whistles and condor transport for unmodified Java
+clients. Its [documentation index](aviary/README.md) routes to player usage,
+development and operations. For general server automation, start with the
+[operator interfaces](docs/operator-agents.md).
+
 ## Architecture
 
 ```text

@@ -105,6 +105,7 @@ def export(name, parts, display=None):
             faces[face] = {'texture': '#'+part['material'], 'uv': [round(8-width/2, 3), 0, round(8+width/2, 3), round(height, 3)]}
         elements.append({'from': [round(8+n*16, 4) for n in low], 'to': [round(8+n*16, 4) for n in high], 'faces': faces})
     model = {'textures': {p['material']: 'oak_aviary:item/'+p['material'] for p in parts}, 'elements': elements, 'gui_light': 'side'}
+    model['textures']['particle'] = '#'+parts[0]['material']
     if display:
         model['display'] = display
     (ASSETS/'models/item'/f'{name}.json').write_text(json.dumps(model, separators=(',', ':'))+'\n', encoding='utf-8')

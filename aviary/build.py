@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import zipfile
 
@@ -14,6 +15,7 @@ parser.add_argument('--jdk', type=Path, required=True)
 parser.add_argument('--output', type=Path, required=True)
 parser.add_argument('--smoke', action='store_true', help='Build an isolated-test artifact; never install it in production.')
 args = parser.parse_args()
+subprocess.run([sys.executable, str(ROOT/'tests/check_pack.py')], check=True)
 out, server = args.output.resolve(), args.server.resolve()
 if out == server or server in out.parents:
     raise SystemExit('Output must be outside the game runtime.')

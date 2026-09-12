@@ -224,6 +224,7 @@ for name, spec in parts.items():
         assert all(-16 <= a <= 32 for a in lo+hi), name
         elements.append({'from': lo, 'to': hi, 'faces': {face: {'uv': face_uv(c['size'], face), 'texture': '#'+c['material']} for face in ('up','down','north','south','east','west')}})
     model = {'textures': {m: 'oak_aviary:item/'+m for m in PALETTE}, 'elements': elements, 'gui_light': 'front'}
+    model['textures']['particle'] = '#'+spec['cubes'][0]['material']
     (ASSETS/'models/item'/f'{name}.json').write_text(json.dumps(model, separators=(',',':')), encoding='utf-8')
     (ASSETS/'items'/f'{name}.json').write_text(json.dumps({'model': {'type':'minecraft:model','model':'oak_aviary:item/'+name}}), encoding='utf-8')
     rig[name] = {'pivot':spec['pivot'], 'parent':spec['parent'], 'cubes':spec['cubes'], 'scale':4}
