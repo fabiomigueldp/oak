@@ -7,7 +7,9 @@
     "CommonListener",
     "GameListener",
     "TransientEntity",
-    "MannequinAccess"
+    "MannequinAccess",
+    "InteractionAccess",
+    "IngredientGuard"
   ],
   "injectors": {
     "defaultRequire": 1

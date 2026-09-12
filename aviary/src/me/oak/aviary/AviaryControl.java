@@ -47,28 +47,52 @@ final class AviaryControl implements AutoCloseable {
     JsonObject execute(JsonObject request){
         String action=request.get("action").getAsString();
         if(action.equals("status"))return status();
+        if(action.equals("policy")){
+            if(request.get("revision").getAsLong()!=app.store.revision)throw new IllegalArgumentException("Aviary changed. Refresh before saving.");
+            if(!request.keySet().stream().allMatch(Set.of("action","revision","fieldPickup","discoverPublic","maxOwnedPerches","maxFlights","shortcutDistance","id")::contains))throw new IllegalArgumentException("Unsupported fields.");
+            var previous=app.store.network;var next=new AviaryStore.NetworkPolicy(request.get("fieldPickup").getAsBoolean(),request.get("discoverPublic").getAsBoolean(),request.get("maxOwnedPerches").getAsInt());
+            var previousSettings=app.store.settings;
+            var settings=new AviaryStore.Settings(previousSettings.enabled(),previousSettings.packUrl(),previousSettings.packSha1(),request.has("shortcutDistance")?request.get("shortcutDistance").getAsDouble():previousSettings.shortcutDistance(),request.has("maxFlights")?request.get("maxFlights").getAsInt():previousSettings.maxFlights());
+            AviaryStore.validate(next);AviaryStore.validate(settings);app.store.network=next;app.store.settings=settings;
+            try{app.store.savePolicy();}catch(Exception e){app.store.network=previous;app.store.settings=previousSettings;throw new IllegalArgumentException("Could not persist network settings. No changes applied.");}
+            return status();
+        }
         String id=request.get("port").getAsString();var old=app.store.ports.get(id);
         if(old==null)throw new IllegalArgumentException("Aviport no longer exists.");
         if(action.equals("check")){
             JsonObject check=new JsonObject();String reason=Journey.portIssue(app.server.overworld(),old);
             check.addProperty("clear",reason.isEmpty());check.addProperty("message",reason.isEmpty()?"Landing area clear":reason);check.addProperty("checked_at",System.currentTimeMillis()/1000.0);
+            check.addProperty("revision",app.store.revision);
             checks.put(id,check);return status();
         }
         if(!action.equals("edit")||request.get("revision").getAsLong()!=app.store.revision)throw new IllegalArgumentException("Aviports changed. Refresh before saving.");
         if(app.busyPort(id))throw new IllegalArgumentException("This aviport has an active flight.");
-        if(!request.keySet().stream().allMatch(Set.of("action","port","revision","name","shared","departureYaw","arrivalYaw","id")::contains))throw new IllegalArgumentException("Unsupported fields.");
+        if(!request.keySet().stream().allMatch(Set.of("action","port","revision","name","shared","departureYaw","arrivalYaw","id","color","style","birdName","hub")::contains))throw new IllegalArgumentException("Unsupported fields.");
         var next=new AviaryStore.Port(old.id(),request.get("name").getAsString(),old.dimension(),old.x(),old.y(),old.z(),old.yaw(),old.owner(),request.get("shared").getAsBoolean(),heading(request,"departureYaw"),heading(request,"arrivalYaw"));
-        AviaryStore.validate(next);app.store.ports.put(id,next);
-        try{app.store.savePolicy();}catch(Exception e){app.store.ports.put(id,old);throw new IllegalArgumentException("Could not persist aviport. No changes applied.");}
+        var before=app.store.perches.get(id);AviaryStore.PerchData perch=null;
+        if(before==null&&Set.of("color","style","birdName","hub").stream().anyMatch(request::has))throw new IllegalArgumentException("Attach a perch before changing its appearance.");
+        if(before!=null){
+            perch=new AviaryStore.PerchData(before.x(),before.y(),before.z(),request.has("color")?request.get("color").getAsString():before.color(),request.has("style")?request.get("style").getAsString():before.style(),request.has("birdName")?request.get("birdName").getAsString():before.birdName(),before.guests(),request.has("hub")?request.get("hub").getAsBoolean():before.hub(),before.active());
+            AviaryStore.validate(perch);
+        }
+        AviaryStore.validate(next);app.store.ports.put(id,next);if(perch!=null)app.store.perches.put(id,perch);
+        try{app.store.savePolicy();}catch(Exception e){app.store.ports.put(id,old);if(before!=null)app.store.perches.put(id,before);throw new IllegalArgumentException("Could not persist aviport. No changes applied.");}
+        if(app.perches!=null)app.perches.update(id);
         checks.remove(id);return status();
     }
     private static Float heading(JsonObject request,String key){return request.get(key).isJsonNull()?null:request.get(key).getAsFloat();}
     JsonObject status(){
         JsonObject result=new JsonObject();result.addProperty("available",true);result.addProperty("enabled",app.store.settings.enabled());result.addProperty("revision",app.store.revision);result.addProperty("error",app.store.error);
         result.addProperty("sampled_at",System.currentTimeMillis()/1000.0);result.addProperty("maxFlights",app.store.settings.maxFlights());
+        result.addProperty("shortcutDistance",app.store.settings.shortcutDistance());
+        result.add("network",JSON.toJsonTree(app.store.network));result.addProperty("waitingCalls",app.waitingCalls());
         JsonArray ports=new JsonArray();for(var p:app.store.ports.values()){
             JsonObject port=JSON.toJsonTree(p).getAsJsonObject();port.addProperty("busy",app.busyPort(p.id()));
-            if(checks.containsKey(p.id()))port.add("check",checks.get(p.id()).deepCopy());ports.add(port);
+            var perch=app.store.perches.get(p.id());port.add("perch",JSON.toJsonTree(perch));port.addProperty("kind",perch==null?"legacy":"perch");port.addProperty("active",perch==null||perch.active());
+            port.addProperty("anchorStatus",perch==null?"legacy":app.perches==null?"unloaded":app.perches.status(p.id()));
+            var owner=app.server.getPlayerList().getPlayer(UUID.fromString(p.owner()));if(owner!=null)port.addProperty("ownerName",owner.getGameProfile().name());
+            if(perch!=null){var names=new JsonObject();for(String guest:perch.guests()){var player=app.server.getPlayerList().getPlayer(UUID.fromString(guest));if(player!=null)names.addProperty(guest,player.getGameProfile().name());}port.add("guestNames",names);}
+            if(checks.containsKey(p.id())&&checks.get(p.id()).get("revision").getAsLong()==app.store.revision)port.add("check",checks.get(p.id()).deepCopy());ports.add(port);
         }result.add("ports",ports);JsonArray flights=new JsonArray();for(var j:app.journeys.values())flights.add(j.status());result.add("flights",flights);return result;
     }
     public void close(){running=false;try{if(listener!=null){listener.close();Files.deleteIfExists(socket);}}catch(Exception ignored){}}

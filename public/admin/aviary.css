@@ -2,6 +2,9 @@
   .aviary-flight { display:flex; flex-wrap:wrap; gap:.5rem 1.5rem; align-items:center; padding:.75rem 0; border-bottom:1px solid var(--line); }
   .aviary-layout { display:grid; grid-template-columns:minmax(220px, .7fr) minmax(0, 1.7fr); gap:2.5rem; margin-top:1.5rem; }
   .aviary-ports { min-width:0; }
+  .aviary-network { width:100%; min-height:44px; padding:.75rem 1rem; margin-bottom:1.25rem; border:1px solid var(--line); border-radius:var(--radius, 12px); background:transparent; color:var(--text); cursor:pointer; text-align:left; }
+  .aviary-network:hover { background:var(--panel); }
+  .aviary-network[aria-pressed="true"] { background:var(--panel); border-color:var(--accent); }
   .aviary-ports > input { width:100%; margin-bottom:1rem; }
   .aviary-port { display:grid; width:100%; text-align:left; gap:.35rem; padding:1rem; border:1px solid transparent; border-radius:var(--radius, 12px); background:transparent; color:var(--text); cursor:pointer; }
   .aviary-port + .aviary-port { margin-top:.25rem; }
@@ -13,16 +16,26 @@
   .aviary-form { display:grid; gap:1.5rem; }
   .aviary-form h2, .aviary-form h3, .aviary-form p { margin:0; }
   .aviary-form h3 { font-size:1rem; }
+  .aviary-form p { max-width:70ch; }
+  .aviary-location-copy { display:flex; flex-wrap:wrap; gap:.4rem 1rem; }
   .aviary-location, .aviary-check { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:1rem; }
-  .aviary-fields, .aviary-directions { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
-  .aviary-direction { display:grid; grid-template-columns:minmax(0, 1fr) 4rem; gap:1rem; align-items:center; padding-top:1.5rem; border-top:1px solid var(--line); }
+  .aviary-fields, .aviary-directions { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:1.5rem; }
+  .aviary-direction { display:grid; grid-template-columns:minmax(0, 1fr) 4rem; gap:1rem; align-items:center; }
   .aviary-direction .field { grid-column:1 / -1; }
   .aviary-compass { position:relative; width:4rem; height:4rem; border:1px solid var(--line); border-radius:50%; display:grid; place-items:center; }
   .aviary-compass > span:first-child { position:absolute; top:-.55rem; background:var(--bg); padding:0 .25rem; color:var(--muted); font-size:.7rem; }
   .aviary-direction-arrow { color:var(--accent); font-size:1.8rem; line-height:1; }
   .aviary-direction-arrow[hidden] { display:none; }
+  .aviary-details { border-top:1px solid var(--line); }
+  .aviary-details > summary { min-height:44px; padding-block:.8rem; color:var(--text); cursor:pointer; }
+  .aviary-details > :not(summary) { margin-top:1rem; }
+  .aviary-details > p.muted { font-size:.85rem; }
+  .aviary-identity { overflow-wrap:anywhere; }
+  .aviary-guests { padding-inline-start:1.25rem; }
+  .aviary-guests li + li { margin-top:.5rem; }
   .aviary-form > .form-actions { border-top:1px solid var(--line); padding-top:1.25rem; }
   .aviary-form > .form-actions > p { margin-right:auto; }
-  @media(max-width:850px) { .aviary-layout { grid-template-columns:1fr; gap:2rem; } .aviary-port-list { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); } }
+  .aviary-form .form-actions { flex-wrap:wrap; }
+  @media(max-width:850px) { .aviary-layout { grid-template-columns:1fr; gap:2rem; } .aviary-port-list { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(180px,100%),1fr)); } }
   @media(max-width:460px) { .aviary-fields, .aviary-directions { grid-template-columns:1fr; } }
 }

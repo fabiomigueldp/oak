@@ -1,6 +1,6 @@
 # Oak Aviary
 
-Current release: [0.3.0 travel, motion and Oak controls](RELEASE-0.3.md).
+Current release: [0.4.0 perches, whistles and shared journeys](RELEASE-0.4.md).
 
 Server-side Fabric transportation for unmodified Minecraft Java 26.3-rc-1.
 The optional resource pack contains original condor models and native screen
@@ -9,13 +9,23 @@ declining the Java pack never prevents joining the server.
 
 ## Use
 
-Build a level landing deck with a solid 3 × 3 center and a clear 7 × 7 area,
-24 blocks high. A 9 × 9 deck leaves room for rails outside the landing area.
-Stand at its center, then use:
+Craft a **Perch** and a **Whistle** using the recipes unlocked on Java login.
+Place the perch on a safe solid block in the Overworld; the temporary preview
+shows its direction, resting space and dismount point. Use it to name your
+destination, choose access and customize its appearance. Use the whistle to
+choose a destination, then interact with the arriving bird's saddle to board.
+No commands or prescribed landing platform are required. The bird still needs
+a clear checked approach and room to open its wings after leaving the support.
+
+Use **Fly with a friend** to invite a nearby Java player. Each rider boards their
+own bird; departure and landing are staggered. Field pickup is available from
+nearby safe outdoor ground, when enabled by the server's network policy.
+
+The following commands remain available for compatibility and administration:
 
 | Command | Action |
 | --- | --- |
-| `/aviary claim home` | Register a private aviport; two per player |
+| `/aviary claim home` | Register a legacy private destination |
 | `/aviary name home Home` | Change its display name |
 | `/aviary share home true` | Let other players use it |
 | `/aviary share home false` | Make it private again |
@@ -28,10 +38,11 @@ Stand at its center, then use:
 | `/aviary port remove spawn` | Administrator: remove a registration |
 | `/aviary status` | Administrator: inspect service state |
 
-Hold Shift for 0.4 seconds to request a safe skip. Travel starts only within six
-blocks of an accessible aviport. Private registrations control route access;
-they are not a land-claim or block-protection system. No structures are placed
-automatically. Only overworld routes are supported in this release.
+Hold Shift for 0.4 seconds while riding to request a safe skip. Private
+registrations control route access; they are not a land-claim system. Existing
+destinations remain usable. Placing a kit near your legacy destination attaches
+a physical perch while preserving its name, access and destination identity.
+Only Overworld routes are supported.
 
 ## Implementation
 

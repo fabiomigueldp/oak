@@ -43,7 +43,10 @@ final class BirdMotion {
         if(phase.equals("cruise")&&demand<.28)demand=0;
         int elapsed=previousTick<0?1:Math.clamp(tick-previousTick,0,4);
         double blend=1-Math.exp(-elapsed/8.0);
-        double tuckTarget=phase.equals("board")?1-FlightPath.ease((progress-.55)/.45):phase.equals("settle")?FlightPath.ease((progress-.28)/.72):phase.equals("greet")?.75:0;
+        double tuckTarget=phase.equals("board")?1-.25*FlightPath.ease((progress-.55)/.45)
+            :phase.equals("settle")||phase.equals("greet")?1
+            :phase.equals("depart")?.75*(1-FlightPath.ease(clearance/2.5))
+            :phase.equals("arrive")||phase.equals("call")?1-FlightPath.ease(clearance/2.5):0;
         tuck+=(tuckTarget-tuck)*blend;
         if(previousTick<0){airborne=airTarget;power=demand;}
         else {airborne+=(airTarget-airborne)*blend;power+=(demand-power)*blend;}

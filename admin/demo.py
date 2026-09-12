@@ -19,10 +19,16 @@ class DemoAgent:
         self.pending_restart = False
         self.last_save = self.started - 600
         self.receipts = {}
-        self.aviary_state = {'available': True, 'enabled': True, 'revision': 0, 'error': '', 'maxFlights': 2, 'flights': [],
+        self.aviary_state = {'available': True, 'enabled': True, 'revision': 0, 'error': '', 'maxFlights': 2, 'shortcutDistance': 500, 'flights': [],
+            'network': {'fieldPickup': True, 'discoverPublic': True, 'maxOwnedPerches': 4},
             'ports': [{'id': ident, 'name': name, 'dimension': 'minecraft:overworld', 'x': x, 'y': 80, 'z': z, 'yaw': 0,
                        'owner': '00000000-0000-0000-0000-000000000001', 'shared': True, 'busy': False, 'departureYaw': None, 'arrivalYaw': None}
                       for ident, name, x, z in [('harbor', 'Harbor', 16, 56), ('ridge', 'Ridge', -96, 184)]]}
+        for port in self.aviary_state['ports']:
+            port.update(kind='legacy', active=True, ownerName='Lia')
+        self.aviary_state['ports'][1].update(kind='perch', anchorStatus='active', perch={
+            'x': -96, 'y': 79, 'z': 184, 'color': 'green', 'style': 'spruce',
+            'birdName': 'Fern', 'guests': [], 'hub': False, 'active': True})
         self.environment_state = {'available': True, 'revision': 0, 'policy': copy.deepcopy(DEFAULTS),
             'fields': RULES, 'drift': False, 'error': '', 'clock': 6000, 'rate': 1, 'paused': False,
             'weather': 'clear', 'next_weather_seconds': 0,
@@ -77,8 +83,13 @@ class DemoAgent:
                 port = next((p for p in self.aviary_state['ports'] if p['id'] == data['port']), None)
                 if not port:
                     raise ValueError('Aviport no longer exists.')
-                port['check'] = {'clear': True, 'message': 'Landing area clear (demo)', 'checked_at': time.time()}
-            return {**copy.deepcopy(self.aviary_state), 'sampled_at': time.time()}
+                port['check'] = {'clear': True, 'message': 'Landing area clear (demo)', 'checked_at': time.time(),
+                                 'revision': self.aviary_state['revision']}
+            result = {**copy.deepcopy(self.aviary_state), 'sampled_at': time.time()}
+            for port in result['ports']:
+                if port.get('check', {}).get('revision') != result['revision']:
+                    port.pop('check', None)
+            return result
         if method == 'logs':
             return {'service': data['service'], 'lines': ['[demonstration] Server ready. No production commands are sent.', '[demonstration] World save completed.'], 'sampled_at': time.time()}
         if method == 'receipt':
@@ -125,11 +136,20 @@ class DemoAgent:
             elif kind == 'aviary_edit':
                 if params['revision'] != self.aviary_state['revision']:
                     raise ValueError('Aviports changed. Refresh before saving.')
-                port = next((p for p in self.aviary_state['ports'] if p['id'] == params['port']), None)
-                if not port or port['busy']:
-                    raise ValueError('Aviport unavailable.')
-                port.update({k: params[k] for k in ('name', 'shared', 'departureYaw', 'arrivalYaw')})
-                port.pop('check', None)
+                if params['action'] == 'policy':
+                    self.aviary_state['network'] = {k: params[k] for k in ('fieldPickup', 'discoverPublic', 'maxOwnedPerches')}
+                    self.aviary_state.update({k: params[k] for k in ('maxFlights', 'shortcutDistance') if k in params})
+                else:
+                    port = next((p for p in self.aviary_state['ports'] if p['id'] == params['port']), None)
+                    if not port or port['busy']:
+                        raise ValueError('Aviport unavailable.')
+                    cosmetic = {k: params[k] for k in ('color', 'style', 'birdName', 'hub') if k in params}
+                    if cosmetic and not port.get('perch'):
+                        raise ValueError('This destination has no physical perch.')
+                    port.update({k: params[k] for k in ('name', 'shared', 'departureYaw', 'arrivalYaw')})
+                    if cosmetic:
+                        port['perch'].update(cosmetic)
+                    port.pop('check', None)
                 self.aviary_state['revision'] += 1
                 result.update(copy.deepcopy(self.aviary_state))
             elif kind == 'environment_apply':

@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "CLC",
+    " S ",
+    "PPP"
+  ],
+  "key": {
+    "C": "minecraft:copper_ingot",
+    "L": "minecraft:leather",
+    "S": "minecraft:stick",
+    "P": "#minecraft:planks"
+  },
+  "result": {
+    "id": "minecraft:disc_fragment_5",
+    "count": 1,
+    "components": {
+      "minecraft:item_name": "Perch",
+      "minecraft:item_model": "oak_aviary:perch",
+      "minecraft:custom_data": {
+        "oak_aviary": "perch"
+      },
+      "minecraft:max_stack_size": 1
+    }
+  }
+}

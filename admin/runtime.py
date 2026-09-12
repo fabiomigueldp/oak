@@ -565,7 +565,7 @@ class Runtime:
         try:
             return aviary_call({'action': 'check', 'port': port} if port else {'action': 'status'})
         except OSError:
-            return {'available': False, 'message': 'Aviary is unavailable. Check that Minecraft is running.'}
+            return {'available': False, 'message': 'Aviary indisponível. Confira se o Minecraft está em execução.'}
 
     def preview(self, kind, params):
         params = validate(kind, params)
@@ -574,7 +574,8 @@ class Runtime:
             current = self.aviary()
             if not current.get('available') or current['revision'] != params['revision']:
                 raise ValueError('Aviports changed. Refresh before saving.')
-            result.update(impact='New flights use the updated aviport. No restart is needed.', steps=['Check current revision', 'Save aviport'])
+            result.update(impact='As novas configurações valem para as próximas viagens, sem reiniciar o servidor.',
+                          steps=['Conferir revisão e permissões', 'Salvar configurações da rede' if params['action'] == 'policy' else 'Salvar destino'])
         elif kind == 'environment_apply':
             current = self.environment()
             if not current.get('available') or current['revision'] != params['revision']:

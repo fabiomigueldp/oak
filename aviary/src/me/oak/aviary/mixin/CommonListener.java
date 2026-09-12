@@ -3,6 +3,7 @@ package me.oak.aviary.mixin;
 import me.oak.aviary.Aviary;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.network.protocol.common.ServerboundResourcePackPacket;
+import net.minecraft.network.protocol.common.ServerboundCustomClickActionPacket;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -14,5 +15,10 @@ public abstract class CommonListener {
     private void aviary$pack(ServerboundResourcePackPacket packet, CallbackInfo ci) {
         var self=(ServerCommonPacketListenerImpl)(Object)this;
         Aviary.packResponse(self.getOwner().id(),packet);
+    }
+    @Inject(method="handleCustomClickAction", at=@At("TAIL"))
+    private void aviary$dialog(ServerboundCustomClickActionPacket packet, CallbackInfo ci) {
+        var self=(ServerCommonPacketListenerImpl)(Object)this;
+        Aviary.dialogResponse(self.getOwner().id(),packet);
     }
 }

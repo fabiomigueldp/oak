@@ -30,5 +30,21 @@
         "attenuation_distance": 12
       }
     ]
+  },
+  "whistle": {
+    "sounds": [
+      {
+        "name": "oak_aviary:whistle",
+        "attenuation_distance": 12
+      }
+    ]
+  },
+  "reply": {
+    "sounds": [
+      {
+        "name": "oak_aviary:reply",
+        "attenuation_distance": 12
+      }
+    ]
   }
 }

@@ -54,6 +54,9 @@ if args.smoke:
     entries['fabric.mod.json']=json.dumps(metadata).encode()
 entries['condor-rig.json']=(ROOT/'art/condor-rig.json').read_bytes()
 entries['condor-motion.json']=(ROOT/'art/condor-motion.json').read_bytes()
+# Fabric exposes the mod's data directory as a normal server data pack. Recipes
+# contain only native item IDs with components, so vanilla recipe sync is safe.
+entries.update({p.relative_to(ROOT).as_posix():p.read_bytes() for p in (ROOT/'data').rglob('*') if p.is_file()})
 archive(out/'oak-aviary.jar',entries)
 entries={p.relative_to(ROOT/'pack').as_posix():p.read_bytes() for p in (ROOT/'pack').rglob('*') if p.is_file()}
 entries['pack.mcmeta']=json.dumps({'pack':{'description':'Oak Aviary','min_format':[97,1],'max_format':[97,1]}}).encode()

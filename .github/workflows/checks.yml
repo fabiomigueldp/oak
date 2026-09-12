@@ -32,6 +32,7 @@ jobs:
       - run: python tests/test_environment.py
       - run: python tests/test_aviary.py
       - run: node --check public/admin/aviary.js
+      - run: node --test tests/test_aviary_web.mjs
       - run: node --check public/admin/environment.js
       - run: node --check public/admin/app.js
       - run: node --check public/admin/backups.js

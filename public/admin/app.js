@@ -1,6 +1,6 @@
 import { renderBackups as renderRecovery, backupUpdated } from "./backups.js?v=4";
 import { renderEnvironment } from "./environment.js?v=2";
-import { renderAviary } from "./aviary.js?v=2";
+import { renderAviary } from "./aviary.js?v=3";
 import { renderOperator } from "./operator.js?v=2";
 import { registerOakTools } from "./webmcp.js?v=1";
 import {

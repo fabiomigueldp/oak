@@ -14,7 +14,7 @@ def operation_resources(kind):
 
 
 OPERATIONS = {
-    'aviary_edit': {'label': 'Edit aviport', 'role': 2, 'review': False, 'schedule': False},
+    'aviary_edit': {'label': 'Configurar Aviary', 'role': 2, 'review': False, 'schedule': False},
     'backup_policy': {'label': 'Configurar backups', 'role': 2, 'review': False, 'schedule': False},
     'backup_edit': {'label': 'Editar ponto', 'role': 2, 'review': False, 'schedule': False},
     'backup_delete': {'label': 'Excluir backup', 'role': 2, 'review': True, 'schedule': False},

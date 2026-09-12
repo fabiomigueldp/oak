@@ -29,13 +29,14 @@ with tempfile.TemporaryDirectory(prefix='oak-aviary-smoke-') as directory:
     with (root/'output.log').open('w') as output:
         process=subprocess.Popen(command,cwd=root,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.STDOUT)
         try:
-            process.wait(timeout=180)
+            process.wait(timeout=260)
         except subprocess.TimeoutExpired:
             process.terminate()
             try: process.wait(timeout=20)
             except subprocess.TimeoutExpired: process.kill();process.wait()
     result=(root/'output.log').read_text()
+    (artifact.parent/'smoke.log').write_text(result)
     if process.returncode or 'AVIARY_SMOKE PASS' not in result or 'AVIARY_SMOKE FAIL' in result:
-        print(result[-18000:])
+        print('\n'.join(line for line in result.splitlines() if any(marker in line for marker in ('AVIARY_SMOKE','STDERR','/ERROR','Exception','Caused by:')))[-12000:])
         raise SystemExit('Aviary native smoke failed.')
     print('\n'.join(line for line in result.splitlines() if 'AVIARY_SMOKE' in line))

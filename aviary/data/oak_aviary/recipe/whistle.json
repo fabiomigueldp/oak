@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "BC",
+    " S"
+  ],
+  "key": {
+    "B": "minecraft:bone",
+    "C": "minecraft:copper_ingot",
+    "S": "minecraft:string"
+  },
+  "result": {
+    "id": "minecraft:disc_fragment_5",
+    "count": 1,
+    "components": {
+      "minecraft:item_name": "Whistle",
+      "minecraft:item_model": "oak_aviary:whistle",
+      "minecraft:custom_data": {
+        "oak_aviary": "whistle"
+      },
+      "minecraft:max_stack_size": 1
+    }
+  }
+}

@@ -11,6 +11,7 @@ import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.AABB;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import java.io.InputStreamReader;
@@ -21,31 +22,62 @@ public final class BirdRig {
     // Native lighting samples the display entity, not its transformed mesh.
     // Keep that probe in the body while the flight root compresses into the deck.
     static final float LIGHT_ANCHOR_HEIGHT=1.25f;
-    private record Part(String name,Vec3 pivot,String parent,Display.ItemDisplay entity) {}
+    private record Definition(String name,Vec3 pivot,String parent,AABB bounds) {}
+    private record Part(String name,Vec3 pivot,String parent,Display.ItemDisplay entity,AABB bounds) {}
+    private static final List<Definition> DEFINITIONS=definitions();
+    private final Map<String,AABB> envelope=new LinkedHashMap<>();
     private final List<Part> parts=new ArrayList<>();
     private final Map<String,Part> byName=new HashMap<>();
     private final BirdMotion motion=new BirdMotion();
+    private BirdTraits traits;
+    private int actingTick;
     private boolean actingPose;
-    public BirdRig(ServerLevel level,Vec3 position) {
-        try(var reader=new InputStreamReader(Objects.requireNonNull(getClass().getResourceAsStream("/condor-rig.json")),java.nio.charset.StandardCharsets.UTF_8)) {
+    private static List<Definition> definitions() {
+        var definitions=new ArrayList<Definition>();
+        try(var reader=new InputStreamReader(Objects.requireNonNull(BirdRig.class.getResourceAsStream("/condor-rig.json")),java.nio.charset.StandardCharsets.UTF_8)) {
             var json=JsonParser.parseReader(reader).getAsJsonObject();
             for(var entry:json.entrySet()) {
-                var values=entry.getValue().getAsJsonObject().getAsJsonArray("pivot");
+                var value=entry.getValue().getAsJsonObject();var values=value.getAsJsonArray("pivot");
                 Vec3 pivot=new Vec3(values.get(0).getAsDouble(),values.get(1).getAsDouble(),values.get(2).getAsDouble());
-                var entity=new Display.ItemDisplay(EntityTypes.ITEM_DISPLAY,level);
-                entity.addTag("oak_aviary_temporary");entity.setNoGravity(true);entity.setSilent(true);entity.setRequiresPrecisePosition(true);
-                entity.setPos(position.x,position.y+LIGHT_ANCHOR_HEIGHT,position.z);
-                ItemStack item=new ItemStack(Items.PAPER);
-                item.set(DataComponents.ITEM_MODEL,Identifier.parse("oak_aviary:"+entry.getKey()));
-                entity.getSlot(0).set(item);
-                var access=(DisplayAccess)entity;access.aviary$duration(2);access.aviary$positionDuration(2);
-                if(!level.addFreshEntity(entity))throw new IllegalStateException("Could not create bird model");
-                var value=entry.getValue().getAsJsonObject();
                 String parent=value.has("parent")&&!value.get("parent").isJsonNull()?value.get("parent").getAsString():null;
-                Part part=new Part(entry.getKey(),pivot,parent,entity);parts.add(part);byName.put(part.name(),part);
+                AABB bounds=null;
+                for(var element:value.getAsJsonArray("cubes")) {
+                    var cube=element.getAsJsonObject();var c=cube.getAsJsonArray("center");var s=cube.getAsJsonArray("size");
+                    AABB box=new AABB(c.get(0).getAsDouble()-s.get(0).getAsDouble()/2,c.get(1).getAsDouble()-s.get(1).getAsDouble()/2,c.get(2).getAsDouble()-s.get(2).getAsDouble()/2,
+                        c.get(0).getAsDouble()+s.get(0).getAsDouble()/2,c.get(1).getAsDouble()+s.get(1).getAsDouble()/2,c.get(2).getAsDouble()+s.get(2).getAsDouble()/2);
+                    bounds=bounds==null?box:bounds.minmax(box);
+                }
+                definitions.add(new Definition(entry.getKey(),pivot,parent,Objects.requireNonNull(bounds)));
+            }
+            return List.copyOf(definitions);
+        }catch(Exception e){throw new ExceptionInInitializerError(e);}
+    }
+    /** Geometry-only instance for route planning: no entities, packets or world access. */
+    static BirdRig preview(){return new BirdRig(null,Vec3.ZERO);}
+    public BirdRig(ServerLevel level,Vec3 position) {
+        try {
+            for(var definition:DEFINITIONS) {
+                Display.ItemDisplay entity=null;
+                if(level!=null) {
+                    entity=new Display.ItemDisplay(EntityTypes.ITEM_DISPLAY,level);
+                    entity.addTag("oak_aviary_temporary");entity.setNoGravity(true);entity.setSilent(true);entity.setRequiresPrecisePosition(true);
+                    entity.setPos(position.x,position.y+LIGHT_ANCHOR_HEIGHT,position.z);
+                    ItemStack item=new ItemStack(Items.PAPER);item.set(DataComponents.ITEM_MODEL,Identifier.parse("oak_aviary:"+definition.name()));entity.getSlot(0).set(item);
+                    var access=(DisplayAccess)entity;access.aviary$duration(2);access.aviary$positionDuration(2);
+                    if(!level.addFreshEntity(entity))throw new IllegalStateException("Could not create bird model");
+                }
+                Part part=new Part(definition.name(),definition.pivot(),definition.parent(),entity,definition.bounds());parts.add(part);byName.put(part.name(),part);
             }
             pose(position,0,0,0);
         } catch(Exception e){close();throw new IllegalStateException("Bird rig unavailable",e);}
+    }
+    void personality(BirdTraits value){traits=value;}
+    void setPlumage(String value) {
+        String prefix=Set.of("ash","amber").contains(value)?value+"/":"";
+        for(Part part:parts)if(part.entity()!=null) {
+            ItemStack item=part.entity().getSlot(0).get().copy();
+            item.set(DataComponents.ITEM_MODEL,Identifier.parse("oak_aviary:"+prefix+part.name()));part.entity().getSlot(0).set(item);
+        }
     }
     private record Joint(Vector3f position,Quaternionf rotation) {}
     record Frame(Vec3 position,boolean downstroke) {}
@@ -54,6 +86,8 @@ public final class BirdRig {
         pose(origin,yaw,wing,tip,bank,0,-.05+wing*.10,0,false);
     }
     private void pose(Vec3 origin,float yaw,double wing,double tip,double bank,double head,double tail,double feet,boolean acting) {
+        envelope.clear();
+        if(acting&&traits!=null)head+=traits.nod(actingTick);
         Quaternionf direction=new Quaternionf().rotationY((float)Math.toRadians(180-yaw));
         Quaternionf rollPitch=new Quaternionf().rotationZ((float)bank).rotateX((float)(acting?motion.pitch:0));
         Vector3f seat=new Vector3f(0,1.47f,.18f);
@@ -85,6 +119,16 @@ public final class BirdRig {
                 if(legs.containsKey(part.name())){Joint solved=legs.get(part.name());offset=new Vector3f(solved.position());rotation=new Quaternionf(solved.rotation());}
             }
             joints.put(part.name(),new Joint(new Vector3f(offset),new Quaternionf(rotation)));
+            // Five coarse pose volumes follow the authored joints. Eight corners per
+            // bone bound its entire mesh; no per-feather or per-triangle collision.
+            AABB bounds=null;var localBounds=part.bounds();
+            for(int corner=0;corner<8;corner++) {
+                var point=new Vector3f((float)((corner&1)==0?localBounds.minX:localBounds.maxX),(float)((corner&2)==0?localBounds.minY:localBounds.maxY),(float)((corner&4)==0?localBounds.minZ:localBounds.maxZ)).rotate(rotation).add(offset);
+                var cube=new AABB(point.x,point.y,point.z,point.x,point.y,point.z);bounds=bounds==null?cube:bounds.minmax(cube);
+            }
+            String group=part.name().endsWith("_wing")||part.name().endsWith("_elbow")||part.name().endsWith("_tip")?part.name().startsWith("left")?"left":"right":part.name().endsWith("_foot")||part.name().endsWith("_lower_leg")?"feet":part.name().equals("tail")?"tail":"body";
+            envelope.merge(group,bounds,AABB::minmax);
+            if(part.entity()==null)continue;
             // Cancel the native ItemDisplayRenderer Y(pi) without changing pivots.
             var transform=new Transformation(offset.sub(0,LIGHT_ANCHOR_HEIGHT,0),rotation,new Vector3f(4),new Quaternionf().rotationY((float)Math.PI));
             var access=(DisplayAccess)part.entity();access.aviary$transform(transform);access.aviary$delay(0);
@@ -126,13 +170,21 @@ public final class BirdRig {
         return animate(origin,yaw,tick,phase,clearance,.6,0,0,0).downstroke();
     }
     Frame animate(Vec3 base,float yaw,int tick,String phase,double clearance,double speed,double climb,double turn,double progress) {
+        actingTick=tick;
         boolean downstroke=motion.update(tick,phase,clearance,speed,climb,turn,progress);
         Vec3 origin=base.add(0,motion.heave,0);
         double[] a=motion.angles;
         if(!actingPose||tick%2==0){pose(origin,yaw,a[0],a[1],motion.bank,a[2],a[3],a[4],true);actingPose=true;}
         // Root translation follows the carrier every tick; joint metadata stays at 10 Hz.
-        for(Part part:parts)part.entity().setPos(origin.x,origin.y+LIGHT_ANCHOR_HEIGHT,origin.z);
+        for(Part part:parts)if(part.entity()!=null)part.entity().setPos(origin.x,origin.y+LIGHT_ANCHOR_HEIGHT,origin.z);
         return new Frame(origin,downstroke);
     }
-    public void close(){for(Part part:parts)part.entity().discard();parts.clear();byName.clear();}
+    Map<String,AABB> bounds(Vec3 base) {
+        var result=new LinkedHashMap<String,AABB>();
+        for(var entry:envelope.entrySet())result.put(entry.getKey(),entry.getValue().move(base.x,base.y+motion.heave,base.z));
+        // Native rider extends above the saddle even when the bird folds its wings.
+        result.merge("body",new AABB(base.x-.45,base.y+1.2,base.z-.45,base.x+.45,base.y+3.55,base.z+.45),AABB::minmax);
+        return result;
+    }
+    public void close(){for(Part part:parts)if(part.entity()!=null)part.entity().discard();parts.clear();byName.clear();}
 }
