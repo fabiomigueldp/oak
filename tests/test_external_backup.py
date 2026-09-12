@@ -1,5 +1,6 @@
 """Validate recovery exports without reading any production backup."""
 import hashlib
+from contextlib import nullcontext
 import importlib.util
 import io
 import json
@@ -60,11 +61,15 @@ class ExportTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 module.verify(self.archive(root, extra='../escape'))
 
-    def exercise_pull(self, root, ack_result=0, corrupt=False, events=None):
+    def exercise_pull(self, root, ack_result=0, corrupt=False, events=None, free_bytes=6 * 1024 ** 3, estimate_payload=None):
         source = self.archive(root, corrupt=corrupt).read_bytes()
         events = events if events is not None else []
+        estimate_payload = estimate_payload if estimate_payload is not None else {'format': 1, 'expected_tar_bytes': len(source), 'file_count': 4}
         def execute(command, **kwargs):
             self.assertEqual(command[0], 'ssh')
+            if '--estimate' in command:
+                events.append('estimate')
+                return subprocess.CompletedProcess(command, 0, json.dumps(estimate_payload).encode(), b'')
             if '--ack-sha256' in command:
                 events.append('ack')
                 if isinstance(ack_result, Exception):
@@ -81,7 +86,7 @@ class ExportTests(unittest.TestCase):
             events.append('archive-renamed' if str(target).endswith('.tar') else 'status-renamed')
             return replace(source, target)
         with patch.object(module, 'secure_destination', side_effect=lambda path: path.mkdir(parents=True, exist_ok=True)), \
-                patch.object(module.shutil, 'disk_usage', return_value=SimpleNamespace(free=6 * 1024 ** 3)), \
+                patch.object(module.shutil, 'disk_usage', return_value=SimpleNamespace(free=free_bytes)), \
                 patch.object(module.subprocess, 'run', side_effect=execute), \
                 patch.object(module.os, 'fsync', side_effect=flushed), \
                 patch.object(module, 'durable_replace', side_effect=replaced):
@@ -96,6 +101,51 @@ class ExportTests(unittest.TestCase):
             self.assertLess(events.index('archive-renamed'), events.index('ack'))
             self.assertEqual(json.loads((root / 'destination/latest.json').read_text())['sha256'], result['sha256'])
             self.assertEqual(list((root / 'destination').glob('*.partial')), [])
+
+    def test_small_export_can_run_with_less_than_five_gib_free(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, events = Path(directory), []
+            result = self.exercise_pull(root, events=events, free_bytes=module.FREE_RESERVE_BYTES + 10240)
+            self.assertTrue(result['server_acknowledged'])
+            self.assertEqual(result['estimate']['required_free_bytes'], module.FREE_RESERVE_BYTES + 10240)
+            self.assertLess(events.index('estimate'), events.index('download'))
+
+    def test_insufficient_free_space_never_downloads_or_acknowledges(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, events = Path(directory), []
+            destination = root / 'destination'
+            destination.mkdir()
+            previous = destination / 'oak-recovery-20000101T000000Z.tar'
+            previous.write_bytes(b'previous copy')
+            required = module.FREE_RESERVE_BYTES + 10240
+            with self.assertRaisesRegex(RuntimeError, f'requires {required} free bytes.*{required - 1} bytes are available'):
+                self.exercise_pull(root, events=events, free_bytes=required - 1)
+            self.assertEqual(events, ['estimate'])
+            self.assertEqual(list(destination.glob('*.partial')), [])
+            self.assertEqual(previous.read_bytes(), b'previous copy')
+
+    def test_invalid_estimate_schema_is_rejected_before_download(self):
+        valid = {'format': 1, 'expected_tar_bytes': 10240, 'file_count': 4}
+        invalid = [[], {}, {**valid, 'format': True}, {**valid, 'format': 2}]
+        invalid.extend({**valid, 'expected_tar_bytes': value} for value in (0, -1, True, '10240', 1.5, 2 ** 63))
+        invalid.extend({**valid, 'file_count': value} for value in (0, -1, True, '4'))
+        for estimate in invalid:
+            with self.subTest(estimate=estimate), tempfile.TemporaryDirectory() as directory:
+                events = []
+                with self.assertRaisesRegex(RuntimeError, 'Invalid recovery export size estimate'):
+                    self.exercise_pull(Path(directory), events=events, estimate_payload=estimate)
+                self.assertEqual(events, ['estimate'])
+
+    def test_operator_can_adjust_free_space_reserve(self):
+        response = SimpleNamespace(stdout=json.dumps({'format': 1, 'expected_tar_bytes': 10240, 'file_count': 4}).encode())
+        with patch.object(module.subprocess, 'run', return_value=response), patch.object(module.shutil, 'disk_usage', return_value=SimpleNamespace(free=11240)):
+            with self.assertRaises(RuntimeError):
+                module.preflight(['ssh'], Path('.'), {})
+            result = module.preflight(['ssh'], Path('.'), {}, reserve_bytes=1000)
+            self.assertEqual(result['required_free_bytes'], 11240)
+            self.assertEqual(result['reserve_bytes'], 1000)
+        with self.assertRaises(ValueError):
+            module.preflight(['ssh'], Path('.'), {}, reserve_bytes=-1)
 
     def test_failed_ack_retains_new_archive_and_old_recovery_point(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -169,8 +219,11 @@ class ExportTests(unittest.TestCase):
             before = {path: path.read_bytes() for path in (admin / 'control.sqlite3', operator / 'operator.sqlite3')}
             target = root / 'export.tar'
             with patch.object(exporter, 'CONTROL', control), patch.object(exporter, 'ADMIN_STATE', admin), patch.object(exporter, 'OPERATOR_STATE', operator), target.open('wb') as stream:
+                expected = exporter.estimate()
                 exporter.export(stream)
             manifest = module.verify(target)
+            self.assertGreaterEqual(expected['expected_tar_bytes'], target.stat().st_size)
+            self.assertEqual(expected['file_count'], len(manifest['files']) + 1)
             self.assertEqual(manifest['format'], 2)
             self.assertFalse(manifest['consistency']['platform_snapshot'])
             self.assertTrue(manifest['recovery']['quarantine_required'])
@@ -178,6 +231,30 @@ class ExportTests(unittest.TestCase):
             self.assertEqual(manifest['entry_captures']['operator/operator.sqlite3']['method'], 'sqlite-backup')
             for path, value in before.items():
                 self.assertEqual(path.read_bytes(), value)
+
+    def test_estimate_accounts_for_wal_and_capture_without_reading_contents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            control, admin, operator = root / 'control', root / 'admin', root / 'operator'
+            (control / 'repository').mkdir(parents=True)
+            (control / 'repository/config').write_bytes(b'private configuration')
+            (control / 'repository.key').write_bytes(b'synthetic secret')
+            admin.mkdir()
+            operator.mkdir()
+            database = operator / 'operator.sqlite3'
+            database.write_bytes(b'x' * 4096)
+            wal = operator / 'operator.sqlite3-wal'
+            wal.write_bytes(b'y' * 131072)
+            with patch.object(exporter, 'CONTROL', control), patch.object(exporter, 'ADMIN_STATE', admin), \
+                    patch.object(exporter, 'OPERATOR_STATE', operator), patch.object(exporter, 'repository_guard', return_value=nullcontext()), \
+                    patch.object(Path, 'open', side_effect=AssertionError('Estimate must not read file contents')):
+                estimate = exporter.estimate()
+            self.assertEqual(estimate['database_wal_bytes'], 131072)
+            self.assertEqual(estimate['file_count'], 4)
+            self.assertGreaterEqual(estimate['capture_allowance_bytes'], 65536)
+            self.assertGreater(estimate['expected_tar_bytes'], estimate['source_bytes'] + 131072)
+            self.assertNotIn('synthetic secret', json.dumps(estimate))
+            self.assertNotIn('repository.key', json.dumps(estimate))
 
 
 class ControlRollbackTests(unittest.TestCase):

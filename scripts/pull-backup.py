@@ -12,6 +12,29 @@ import subprocess
 import tarfile
 import uuid
 
+FREE_RESERVE_BYTES = 256 * 1024 ** 2
+
+
+def preflight(command, destination, hidden, reserve_bytes=FREE_RESERVE_BYTES):
+    if type(reserve_bytes) is not int or reserve_bytes < 0:
+        raise ValueError('reserve_bytes must be a nonnegative integer.')
+    response = subprocess.run(command + ['--estimate'], capture_output=True, check=True, timeout=60, **hidden)
+    if len(response.stdout) > 65536:
+        raise RuntimeError('Invalid recovery export size estimate.')
+    try:
+        estimate = json.loads(response.stdout)
+    except (ValueError, UnicodeError) as exc:
+        raise RuntimeError('Invalid recovery export size estimate.') from exc
+    if (not isinstance(estimate, dict) or type(estimate.get('format')) is not int or estimate['format'] != 1 or
+            type(estimate.get('expected_tar_bytes')) is not int or not 0 < estimate['expected_tar_bytes'] <= 2 ** 63 - 1 or
+            type(estimate.get('file_count')) is not int or not 0 < estimate['file_count'] <= 2 ** 63 - 1):
+        raise RuntimeError('Invalid recovery export size estimate.')
+    required = estimate['expected_tar_bytes'] + reserve_bytes
+    available = shutil.disk_usage(destination).free
+    if available < required:
+        raise RuntimeError(f'Recovery export requires {required} free bytes ({estimate["expected_tar_bytes"]} estimated archive bytes plus {reserve_bytes} reserve); {available} bytes are available.')
+    return {**estimate, 'reserve_bytes': reserve_bytes, 'required_free_bytes': required, 'available_free_bytes': available}
+
 
 def sync_directory(path):
     if os.name == 'posix':
@@ -119,7 +142,7 @@ def verify(path):
     return manifest
 
 
-def pull(destination, host='oracle', keep=3):
+def pull(destination, host='oracle', keep=3, reserve_bytes=FREE_RESERVE_BYTES):
     if not isinstance(host, str) or not host or host.startswith('-') or any(value.isspace() for value in host):
         raise ValueError('SSH host must be a hostname or configured alias.')
     if isinstance(keep, bool) or not isinstance(keep, int) or keep < 1:
@@ -139,12 +162,11 @@ def pull(destination, host='oracle', keep=3):
         else:
             import fcntl
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        if shutil.disk_usage(destination).free < 5 * 1024 ** 3:
-            raise RuntimeError('At least 5 GiB free local space is required for the export.')
+        command = ['ssh', '-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', host, 'sudo', '-n', '/opt/oak-operator/current/.venv/bin/python', '/opt/oak-operator/current/scripts/export-backup.py']
+        estimate = preflight(command, destination, hidden, reserve_bytes)
         stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
         target = destination / ('oak-recovery-' + stamp + '.tar')
         partial = target.with_suffix('.partial')
-        command = ['ssh', '-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', host, 'sudo', '-n', '/opt/oak-operator/current/.venv/bin/python', '/opt/oak-operator/current/scripts/export-backup.py']
         try:
             with partial.open('xb') as output:
                 subprocess.run(command, stdout=output, stderr=subprocess.PIPE, check=True, timeout=3600, **hidden)
@@ -154,7 +176,7 @@ def pull(destination, host='oracle', keep=3):
             with partial.open('rb') as stream:
                 digest = hashlib.file_digest(stream, 'sha256').hexdigest()
             durable_replace(partial, target)
-            status = {'path': str(target), 'verified_at': datetime.now(timezone.utc).isoformat(), 'sha256': digest, 'files': len(manifest['files']), 'server_acknowledged': False}
+            status = {'path': str(target), 'verified_at': datetime.now(timezone.utc).isoformat(), 'sha256': digest, 'files': len(manifest['files']), 'server_acknowledged': False, 'estimate': estimate}
             write_json(destination / 'latest.json', status)
             try:
                 ack = subprocess.run(command + ['--ack-sha256', digest, '--bytes', str(target.stat().st_size)], capture_output=True, timeout=30, **hidden)
@@ -181,9 +203,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--destination', type=Path, default=Path.home() / 'Backups' / 'OakRecovery')
     parser.add_argument('--host', default='oracle')
+    parser.add_argument('--reserve-mib', type=int, default=256, help='Free-space reserve beyond the estimated archive size (default: 256 MiB).')
     args = parser.parse_args()
     try:
-        result = pull(args.destination, args.host)
+        result = pull(args.destination, args.host, reserve_bytes=args.reserve_mib * 1024 ** 2)
         if __import__('sys').stdout is not None:
             print(json.dumps(result))
     except Exception as exc:

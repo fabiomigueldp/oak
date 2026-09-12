@@ -125,6 +125,11 @@ Use `scripts/pull-backup.py`. It starts `scripts/export-backup.py` over the exis
 SSH/sudo connection, downloads to a partial file, checks every manifest hash, then
 renames the verified archive and acknowledges the download on Oracle.
 
+The downloader estimates archive size before starting and adds a 256 MiB free-space
+reserve. `--reserve-mib` changes that reserve for the current run. It retains the
+previous archives until the new copy is verified and acknowledged. Daily full
+exports therefore need room for another complete archive before retention runs.
+
 The export includes the restic repository and recovery key, its catalog/policy,
 SQLite backups of the control/operator databases, and operator packages,
 services and notebooks. It contains the backups already in the repository; it
