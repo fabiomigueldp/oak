@@ -31,8 +31,8 @@ teleporting or protecting the player. The durable recovery journal and protectio
 begin only after explicit boarding. Full/Quick and Follow/Free preferences persist.
 
 Field pickup finds nearby loaded outdoor ground; no origin registration is created.
-A known placed destination is still required. Pickup does not extract players
-through caves, walls, water or protected blocks. Queued calls are bounded, expire
+A known placed destination is still required. Pickup needs a nearby loaded,
+open-air landing spot and never changes terrain. Queued calls are bounded, expire
 after a minute, and can be cancelled with the whistle.
 
 Two nearby Java players can choose **Fly with a friend**. The invited player must

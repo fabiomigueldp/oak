@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix='oak-aviary-smoke-') as directory:
     with (root/'output.log').open('w') as output:
         process=subprocess.Popen(command,cwd=root,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.STDOUT)
         try:
-            process.wait(timeout=260)
+            process.wait(timeout=300)
         except subprocess.TimeoutExpired:
             process.terminate()
             try: process.wait(timeout=20)

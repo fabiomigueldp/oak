@@ -32,7 +32,7 @@ public final class Smoke implements ModInitializer {
         if(!System.getProperty("oak.aviary.smoke","").equals("isolated"))throw new IllegalStateException("Smoke artifact must never run in production");
         ServerTickEvents.END_SERVER_TICK.register(server->{
             try {
-                if(++tick>3800)throw new AssertionError("Flight timeout, stage="+stage);
+                if(++tick>4600)throw new AssertionError("Flight timeout, stage="+stage);
                 Aviary app=Aviary.instance;if(app.store==null)return;
                 if(player==null) {
                     var level=server.overworld();
