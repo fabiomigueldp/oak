@@ -88,7 +88,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
    self.connection.settimeout(15)
    if self.headers.get('Transfer-Encoding'):return self.result(400,{'error':'Unsupported transfer encoding'})
    size=int(self.headers.get('Content-Length','0'))
-   if not 0<=size<=65536:return self.result(413,{'error':'Solicitação muito grande.'})
+   maximum=2*1024*1024 if self.path.startswith('/admin/api/operator/') else 65536
+   if not 0<=size<=maximum:return self.result(413,{'error':'Solicitação muito grande.'})
    data=self.rfile.read(size) if size else None
    headers={name:self.headers[name] for name in ('Origin','Content-Type','Cookie','X-Oak-CSRF','Idempotency-Key','Accept') if name in self.headers}
    headers['X-Real-IP']=self.headers.get('X-Oak-Client-IP',self.client_address[0]).split(',')[-1].strip()

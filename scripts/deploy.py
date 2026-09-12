@@ -30,6 +30,8 @@ for asset in ('favicon.ico', 'oak-32.png', 'oak-64.png', 'oak-180.png', 'oak-512
     TARGETS['public/brand/' + asset] = Path('/srv/oak/web/brand') / asset
 for asset in ('index.html', 'style.css', 'app.js', 'model.js', 'environment.js', 'environment.css', 'aviary.js', 'aviary.css', 'backups.js', 'backups.css', 'oak.svg', 'world-cover.png', 'demo-map.html', 'demo-map.js', 'demo-map.css', 'player-pin.css'):
     TARGETS['public/admin/' + asset] = Path('/srv/oak/web/admin') / asset
+for asset in ('operator.js', 'operator.css', 'webmcp.js'):
+    TARGETS['public/admin/' + asset] = Path('/srv/oak/web/admin') / asset
 
 def run(*args):
     subprocess.run(args, check=True, timeout=120)

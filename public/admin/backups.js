@@ -4,6 +4,14 @@ let query = '';
 let latestSignature = '';
 let pendingRefresh = false;
 
+export function externalCopyStatus(data, now = Date.now() / 1000) {
+  const at = data.external_copy_verified_at;
+  const valid = Number.isFinite(at) && at > 0 && at <= now;
+  const recent = valid && data.external_copy === true && now - at < 48 * 3600;
+  return { at: valid ? at : null, kind: recent ? 'good' : 'warning',
+    label: recent ? 'Confirmada nas últimas 48 h' : valid ? 'Sem confirmação recente' : 'Sem confirmação' };
+}
+
 export function backupUpdated(context) {
   if (context.state.page !== 'backups') return;
   const signature = JSON.stringify((context.state.overview.jobs || []).map(j => [j.id, j.state, j.step]));
@@ -25,6 +33,7 @@ export async function renderBackups(c) {
   const idle = data.health?.last_skipped > (current?.created || 0);
   const interval = policy.interval_minutes % 60 === 0 ? `${policy.interval_minutes / 60} h` : `${policy.interval_minutes} min`;
   const tag = (label, kind = '') => el('span', 'recovery-tag ' + kind, label);
+  const external = externalCopyStatus(data);
 
   function openBackup(p) {
     const detail = el('div', 'recovery-detail', el('h2', '', time(p.created, true)));
@@ -113,6 +122,9 @@ export async function renderBackups(c) {
   const meter = el('meter'); meter.min = 0; meter.max = policy.budget_gib * 1024 ** 3; meter.value = data.bytes || 0; meter.setAttribute('aria-label', 'Armazenamento dos backups');
   storage.append(el('div', 'recovery-storage-total', el('span', '', 'Armazenamento'), el('span', '', `${bytes(data.bytes || 0)} / ${policy.budget_gib} GiB`)), meter);
   root.append(el('div', 'recovery-summary', mode, storage));
+  root.append(el('details', 'recovery-external',
+    el('summary', '', el('span', '', 'Cópia externa'), tag(external.label, external.kind), external.at && el('time', 'muted', time(external.at, true))),
+    el('p', 'caption', 'Confirmação do download verificado no computador do proprietário. Inclui o repositório de backups e dados de controle. Não é uma imagem completa da VM.')));
   if (active) root.append(button(active.label + ' · ' + (active.step || JOB_STATES[active.state]), () => showJob(active.id), 'recovery-running', 'activity'));
   if (data.recovery_pending && can('recover_restore')) root.append(button('Reverter restauração interrompida', () => operation('recover_restore'), 'button danger'));
   if (data.health?.check_failed) root.append(el('p', 'notice', 'A verificação do armazenamento falhou. Consulte o diagnóstico nas configurações.'));

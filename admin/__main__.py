@@ -20,6 +20,7 @@ def main():
     invite.add_argument('--name', required=True)
     invite.add_argument('--role', choices=['owner', 'administrator', 'moderator', 'observer'], default='owner')
     sub.add_parser('agent')
+    sub.add_parser('worker')
     sub.add_parser('recover-saving')
     sub.add_parser('recover-restore')
     sub.add_parser('guard-start')
@@ -54,6 +55,21 @@ def main():
         if not snapshot.get('fresh'):
             raise RuntimeError('Host status is stale. Check the existing status collector.')
         print(json.dumps({'agent': 'connected', 'fresh': snapshot['fresh'], 'online': snapshot['online'], 'version': snapshot['version'], 'backups': len(backups), 'settings': len(configuration['fields'])}))
+    elif args.command == 'worker':
+        import signal
+        import threading
+        from .agent import AgentClient
+        from .worker import Worker
+        settings = Settings.from_env()
+        worker = Worker(Store(settings.state / 'control.sqlite3'), AgentClient(settings.socket), settings.poll_seconds)
+        stopped = threading.Event()
+        signal.signal(signal.SIGTERM, lambda *_: stopped.set())
+        signal.signal(signal.SIGINT, lambda *_: stopped.set())
+        worker.start()
+        try:
+            stopped.wait()
+        finally:
+            worker.close()
     elif args.command == 'agent':
         from .agent import main as agent_main
         agent_main()

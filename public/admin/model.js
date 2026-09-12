@@ -7,6 +7,7 @@ export const PAGES = {
   players: "Jogadores",
   backups: "Backups",
   operations: "Operações",
+  operator: "Operador",
   server: "Servidor",
   access: "Acesso",
 };

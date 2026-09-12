@@ -4,6 +4,7 @@ from collections import deque
 from contextlib import asynccontextmanager
 import hmac
 import json
+import os
 from pathlib import Path
 import re
 import secrets
@@ -27,8 +28,9 @@ STATIC = Path(__file__).resolve().parents[1] / 'public' / 'admin'
 API = '/admin/api'
 
 
-def create_app(settings=None, agent=None, *, background=True):
+def create_app(settings=None, agent=None, *, background=True, operator=None):
     settings = settings or Settings.from_env()
+    background = background and (settings.demo or os.environ.get('OAK_ADMIN_BACKGROUND', '1') != '0')
     store = Store(settings.state / 'control.sqlite3')
     if agent is None:
         if settings.demo:
@@ -48,9 +50,15 @@ def create_app(settings=None, agent=None, *, background=True):
     async def lifespan(app):
         if background:
             worker.start()
-        yield
-        if background:
-            worker.close()
+            if settings.demo:
+                app.state.operator.start()
+        try:
+            yield
+        finally:
+            if background:
+                worker.close()
+            if settings.demo:
+                app.state.operator.close()
 
     app = FastAPI(title='Oak Control', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.store, app.state.agent, app.state.settings = store, agent, settings
@@ -69,12 +77,13 @@ def create_app(settings=None, agent=None, *, background=True):
                     length = int(request.headers.get('content-length', '0'))
                 except ValueError:
                     return JSONResponse({'error': 'Tamanho inválido.'}, status_code=400)
-                if length < 0 or length > 65536:
+                maximum = 2 * 1024 * 1024 if request.url.path.startswith(API + '/operator/') else 65536
+                if length < 0 or length > maximum:
                     return JSONResponse({'error': 'Solicitação muito grande.'}, status_code=413)
                 body = bytearray()
                 async for chunk in request.stream():
                     body.extend(chunk)
-                    if len(body) > 65536:
+                    if len(body) > maximum:
                         return JSONResponse({'error': 'Solicitação muito grande.'}, status_code=413)
                 request._body = bytes(body)
                 if request.url.path.startswith(API + '/auth/'):
@@ -143,6 +152,9 @@ def create_app(settings=None, agent=None, *, background=True):
         if not isinstance(data, dict):
             raise ValueError('Expected a JSON object.')
         return data
+
+    from .operator_api import register_operator
+    register_operator(app, settings, current, body, operator)
 
     def logged_in(uid):
         token, csrf = store.session(uid, settings.session_seconds)

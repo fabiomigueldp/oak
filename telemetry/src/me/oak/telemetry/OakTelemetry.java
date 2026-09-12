@@ -40,6 +40,7 @@ public final class OakTelemetry implements ModInitializer {
     private boolean ownsSocket;
     private long tick;
     private EnvironmentController environment;
+    private OperatorBridge operator;
     private final Map<String, Appearance> appearances = new HashMap<>();
     private final Map<String, Float> swings = new HashMap<>();
     private final Map<String, Long> swingIds = new HashMap<>();
@@ -49,10 +50,13 @@ public final class OakTelemetry implements ModInitializer {
             start();
             try { environment = new EnvironmentController(server); }
             catch (Exception e) { System.err.println("Oak environment unavailable: " + e.getClass().getSimpleName()); }
+            try { operator = new OperatorBridge(server); }
+            catch (Exception e) { System.err.println("Oak operator unavailable: " + e.getClass().getSimpleName()); }
         });
-        ServerLifecycleEvents.SERVER_STOPPING.register(server -> { if (environment != null) environment.close(); close(); });
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> { if (operator != null) operator.close(); if (environment != null) environment.close(); close(); });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             if (environment != null) try { environment.tick(); } catch (Exception e) { environment.fail(); }
+            if (operator != null) try { operator.tick(); } catch (Exception e) { System.err.println("Oak operator tick failed: " + e.getClass().getSimpleName()); }
             ++tick;
             // Observe short arm actions each tick; only publish at the bounded rate.
             for (var p : server.getPlayerList().getPlayers()) {

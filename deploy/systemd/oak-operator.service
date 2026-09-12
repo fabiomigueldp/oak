@@ -1,0 +1,24 @@
+[Unit]
+Description=Oak trusted operator jobs and automation
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=oak-control
+WorkingDirectory=/opt/oak-operator/current
+RuntimeDirectory=oak-operator
+RuntimeDirectoryMode=0750
+StateDirectory=oak-operator
+StateDirectoryMode=0700
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=OAK_OPERATOR_STATE=/var/lib/oak-operator
+ExecStart=/opt/oak-operator/current/.venv/bin/python -m oak_operator.daemon
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=45
+KillMode=control-group
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

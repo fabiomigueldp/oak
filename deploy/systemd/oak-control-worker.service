@@ -1,5 +1,5 @@
 [Unit]
-Description=Oak private administration API
+Description=Oak administrative queue and status worker
 After=network.target oak-control-agent.service
 Wants=oak-control-agent.service
 
@@ -9,10 +9,8 @@ User=oak-control
 Group=oak-control
 WorkingDirectory=/opt/oak-control/current
 Environment=OAK_ADMIN_STATE=/var/lib/oak-control
-Environment=OAK_ADMIN_ORIGIN=https://oak.fabiomigueldp.me
 Environment=PYTHONDONTWRITEBYTECODE=1
-Environment=OAK_ADMIN_BACKGROUND=0
-ExecStart=/opt/oak-control/current/.venv/bin/python -m admin serve
+ExecStart=/opt/oak-control/current/.venv/bin/python -m admin worker
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15

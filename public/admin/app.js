@@ -1,6 +1,8 @@
-import { renderBackups as renderRecovery, backupUpdated } from "./backups.js?v=3";
+import { renderBackups as renderRecovery, backupUpdated } from "./backups.js?v=4";
 import { renderEnvironment } from "./environment.js?v=2";
 import { renderAviary } from "./aviary.js?v=2";
+import { renderOperator } from "./operator.js?v=2";
+import { registerOakTools } from "./webmcp.js?v=1";
 import {
   PAGES,
   ROLES,
@@ -114,10 +116,12 @@ async function api(
   data,
   method = data === undefined ? "GET" : "POST",
   extra = {},
+  options = {},
 ) {
   const response = await fetch("/admin/api" + path, {
     method,
     credentials: "same-origin",
+    signal: options.signal,
     headers: {
       ...(data === undefined
         ? {}
@@ -753,6 +757,7 @@ async function renderWorld() {
 function focusMap(p) {
   following = null;
   if (!p.position) return;
+  state.mapSelection = { position: [...p.position], dimension: p.dimension };
   worldFrame.contentWindow.postMessage(
     { type: "oak-admin-focus", position: p.position, dimension: p.dimension },
     location.origin,
@@ -1417,6 +1422,7 @@ function consoleView() {
 }
 async function navigate(page) {
   if (!PAGES[page]) page = "now";
+  if (page === 'operator' && level() < 3) page = 'now';
   if (
     state.dirty && !state.draftSaved &&
     page !== state.page &&
@@ -1427,6 +1433,8 @@ async function navigate(page) {
     history.replaceState(null, "", "#" + state.page);
     return;
   }
+  state.disposeView?.();
+  state.disposeView = null;
   state.dirty = false;
   state.page = page;
   const generation = ++state.generation;
@@ -1466,6 +1474,7 @@ async function navigate(page) {
       players: renderPlayers,
       backups: renderBackups,
       operations: renderOperations,
+      operator: () => renderOperator({ el, button, field, input, select, heading, api, state }),
       server: renderServer,
       access: renderAccess,
     }[page]();
@@ -1487,8 +1496,11 @@ async function enter(session) {
   $("#account-role").textContent = ROLES[session.user.role];
   $("#account-avatar").textContent = session.user.name.slice(0, 2);
   $("#console-open").hidden = level() < 3;
+  $("[data-page='operator']").hidden = level() < 3;
   await refresh();
   await navigate(location.hash.slice(1) || "now");
+  state.disposeTools?.();
+  state.disposeTools = await registerOakTools({ state, api, navigate, focusMap, pages: PAGES });
   state.stream?.close();
   state.stream = new EventSource("/admin/api/stream");
   state.stream.onmessage = (event) => {
@@ -1505,6 +1517,11 @@ async function enter(session) {
   state.stream.addEventListener("session-ended", showLogin);
 }
 function showLogin() {
+  state.disposeView?.();
+  state.disposeView = null;
+  state.disposeTools?.();
+  state.disposeTools = null;
+  state.mapSelection = null;
   state.stream?.close();
   positionStream?.close();
   positionStream = null;
@@ -1536,7 +1553,7 @@ function showLogin() {
 function searchResults() {
   const query = $("#global-search").value.toLocaleLowerCase("pt-BR");
   const entries = [
-    ...Object.entries(PAGES).map(([id, label]) => ({
+    ...Object.entries(PAGES).filter(([id]) => id !== 'operator' || level() >= 3).map(([id, label]) => ({
       label,
       group: "Página",
       run: () => navigate(id),

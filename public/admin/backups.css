@@ -45,6 +45,11 @@
 .recovery-job { display: block; width: 100%; padding: 13px 0; min-height: 44px; border: 0; border-bottom: 1px solid var(--soft-line); background: transparent; color: var(--muted); text-align: left; cursor: pointer; }
 .recovery-job:hover { color: var(--text); }
 .recovery-empty { color: var(--muted); padding-block: 24px; font-size: .9rem; }
+.recovery-external { margin-top: 12px; }
+.recovery-external summary { min-height: 44px; align-content: center; cursor: pointer; font-size: .86rem; }
+.recovery-external summary > * { margin-right: 10px; }
+.recovery-external summary time { white-space: nowrap; font-size: .8rem; }
+.recovery-external > p { margin-top: 4px; }
 @media (max-width: 700px) {
   .detail-drawer:has(.recovery-detail) { width: 100%; }
   .recovery-summary { grid-template-columns: 1fr; gap: 24px; }

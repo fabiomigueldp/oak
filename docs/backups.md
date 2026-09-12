@@ -3,8 +3,9 @@
 Oak uses a private local restic v2 repository at `/srv/oak/control/repository`.
 The Ubuntu-packaged restic 0.16.4 is the tested production engine. Its key is
 `/srv/oak/control/repository.key` (root-only); the API cannot read either path.
-The repository and its key must both survive to recover data. This is local
-protection, not an off-host copy or a VM disaster-recovery solution.
+The repository and its key must both survive to recover data. The repository is
+local protection. The separate [external recovery export](operator.md#external-recovery-copy)
+copies it and selected control state to the owner's computer; it is not a VM image.
 
 ## Capture and storage
 
@@ -34,12 +35,14 @@ restic IDs, never abbreviated identifiers accepted from callers.
 
 ## One policy
 
-`backup-policy.json` is the revisioned host authority. The API's durable worker
-queues policy work using actor `backup-policy`, independently of user sessions.
+`backup-policy.json` is the revisioned host authority. The separate
+`oak-control-worker` service queues policy work using actor `backup-policy`,
+independently of user sessions and the administrative API process.
 It coalesces downtime, runs one operation at a time, rejects stale host evidence,
 and backs off each failed/attempted automatic operation for 30 minutes without
-blocking other due kinds. The administrative API must be running for scheduling;
-the public collector reports overdue protection if it is not.
+blocking other due kinds. The worker and host agent must be running for scheduling
+and execution; restarting only the API leaves them active. The public collector
+reports overdue protection from the recorded backup state.
 
 Default enabled production policy:
 

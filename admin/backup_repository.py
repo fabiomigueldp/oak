@@ -156,11 +156,14 @@ class Repository:
             # Actual extraction authenticates the selected data before replacement.
             p['restorable'] = p.get('manifest', {}).get('includes_runtime', False)
         newest = points[0]['created'] if points else None
+        external = self.read(self.runtime.control / 'external-copy.json', {})
+        external_at = external.get('verified_at', 0)
         return {'ready': self.ready, 'engine': 'restic', 'sampled_at': time.time(), 'backups': points,
                 'policy': policy, 'bytes': used, 'logical_bytes': sum(p['bytes'] for p in points),
                 'free_bytes': shutil.disk_usage(self.runtime.root).free, 'reserve_bytes': self.runtime.free_reserve,
                 'next_run': (max(newest or 0, health.get('last_attempt', 0)) + policy['interval_minutes'] * 60) if policy['enabled'] else None,
-                'health': health, 'external_copy': False, 'prunable': retention(points, policy),
+                'health': health, 'external_copy': bool(external_at and 0 <= time.time() - external_at < 48 * 3600),
+                'external_copy_verified_at': external_at or None, 'prunable': retention(points, policy),
                 'recovery_pending': (self.runtime.control / 'restore-pending.json').exists()}
 
     def update_policy(self, params):

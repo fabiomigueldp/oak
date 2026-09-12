@@ -3,7 +3,8 @@
 The private application at `/admin/` extends the public player dashboard. Its
 implementation is in `admin/` and `public/admin/`. The [blueprint](admin-panel-blueprint.md)
 records the initial investigation and future opportunities, not a list of shipped features.
-External backup storage is deliberately deferred at the owner's request.
+The operator daemon, separate administrative worker and external recovery copy
+are documented in the [operator runbook](operator.md).
 
 Current retention, sessions and administrative behavior: [policy update](admin-policy-update.md). The original operational details below are superseded where that update states a change.
 
@@ -16,6 +17,7 @@ Current retention, sessions and administrative behavior: [policy update](admin-p
 | Players | Java/Bedrock identities, visits, kick/ban/pardon, whitelist, operator changes and player-to-player teleport |
 | Backups | Named local checkpoints, archive integrity, isolated extraction, optional isolated game boot, reviewed restoration and safety checkpoint |
 | Operations | Durable queue, steps/results, queued cancellation, interrupted receipt reconciliation, interval schedules and audit history |
+| Operator | Trusted code execution, routines, managed services, packages, revisioned notebooks and events |
 | Server | Typed settings, revision conflicts and reviewed diffs, explicit start/stop/restart, backup before maintenance and bounded service journals |
 | Access | Passkeys, one-use invitations, four roles, account suspension and session revocation |
 
@@ -65,14 +67,19 @@ Browser -> existing HTTPS Caddy/Nginx
   /admin/api/   -> existing website service :8091
                    -> loopback API 127.0.0.1:8092 (oak-control user)
                      -> /run/oak-control/agent.sock (private Unix socket)
-                       -> root agent: fixed RCON/systemd/filesystem capabilities
+                       -> root agent: typed RCON/systemd/filesystem operations
+                     -> /run/oak-operator/operator.sock (owner API only)
+                       -> root operator: code, jobs and extensions
+
+oak-control-worker -> control database and host-agent socket
 ```
 
 No new public port, RCON exposure, firewall rule or DNS change is required. The
-agent accepts neither shell commands nor caller-selected paths. The owner-only
-raw console operates within Minecraft; lifecycle and function dispatch are
-excluded to preserve locks. Game credentials stay inaccessible to the HTTP
-process. Root receipts are private. Console results are owner-only.
+existing typed agent retains its operation checks and private receipts. The
+separate owner-only Operator API provides arbitrary shell/code execution and host
+paths through `oak-operator`. It uses the daemon's root authority without the
+legacy console's command restrictions. See the [operator runbook](operator.md)
+for authentication, installation and execution semantics.
 
 Passkeys require user verification, resident credentials, exact RP/origin checks
 and one-use challenges. Sessions are HttpOnly/Secure/SameSite Strict, last 12 hours,
@@ -81,12 +88,14 @@ to its account role without an additional authentication-age gate. There is
 no default password or public self-registration.
 
 Reviews bind actor, operation and exact parameters for five minutes. Jobs have
-actor-bound idempotency keys. One worker owns the database queue; the agent
-serializes world operations and persists a receipt before delivery. Unknown
+actor-bound idempotency keys. The separate `oak-control-worker` owns the
+administrative database queue; the agent serializes world operations and persists
+a receipt before delivery. Unknown
 delivery is never replayed automatically. Permission changes end the affected
 account's sessions, invalidate invitations, pause its routines and cancel queued
-jobs. Already delivered actions cannot be undone by revocation. The local audit
-is not tamper-proof against a host administrator with root access.
+administrative jobs. Operator jobs and managed services continue independently
+of the portal session. Already delivered actions cannot be undone by revocation.
+The local audit is not tamper-proof against a host administrator with root access.
 
 ## First Oracle installation
 
@@ -101,8 +110,9 @@ sudo python3 /srv/oak/site-repo/scripts/install-control.py <full-reviewed-commit
 The installer needs Python venv support and access to the Python package registry.
 It creates the `oak-control` system identity, code releases under
 `/opt/oak-control/releases/<commit>`, private state under `/var/lib/oak-control`,
-and two services. It also installs a Minecraft **start guard** drop-in and reloads
-systemd. It does not restart Minecraft, render maps, modify game settings or run
+and three services: API, worker and host agent. It also installs a Minecraft
+**start guard** drop-in and reloads systemd. It does not restart Minecraft, render
+maps, modify game settings or run
 the external map adapter. The guard prevents a later Java start from opening an
 incomplete restore. Ordinary website deployment never installs this agent.
 
@@ -126,10 +136,11 @@ URLs. The owner completes their device's passkey registration themselves.
 For lost keys, issue another owner invitation from trusted SSH, then suspend the
 old account after verifying the new access.
 
-For API rollback, stop the API then agent, restore `/opt/oak-control/current` to
-the previous reviewed release and its matching units, reload systemd and start
-the two administrative services. Keep the start guard and database. Schema v1 is
-additive; review migration compatibility before running older code against any
+For control rollback, stop the API and worker, then the agent. Restore
+`/opt/oak-control/current` to the previous reviewed release and its matching units,
+reload systemd and start the host agent, worker and API services. Keep the start
+guard and database. Schema v1 is additive; review migration compatibility before
+running older code against any
 future schema. Website rollback remains independent.
 
 ## Unified backup contract

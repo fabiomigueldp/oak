@@ -1,0 +1,3 @@
+# Optional MCP transport only. CLI, SDK and daemon use the Python standard library.
+# Official MCP Python SDK v2, isolated from the portal environment.
+mcp==2.2.0
