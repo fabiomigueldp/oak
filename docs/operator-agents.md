@@ -29,6 +29,12 @@ startup_timeout_sec = 30
 tool_timeout_sec = 60
 ```
 
+On Windows, forward `PROGRAMDATA` to OpenSSH. Add
+`env = { PROGRAMDATA = "C:\\ProgramData" }` to that MCP entry, or use
+`codex mcp add oak --env PROGRAMDATA=C:\ProgramData -- ssh -T -o BatchMode=yes oracle sudo -n /usr/local/bin/oak-operator --actor codex mcp`.
+The official Python MCP client also needs this variable in `StdioServerParameters.env`
+when its sanitized subprocess environment is used.
+
 SSH starts a protocol adapter; the existing daemon executes jobs. No public port
 or browser session is needed. Logs go to stderr; stdout contains only protocol
 messages. SSH host verification and sudo policy remain in effect.
