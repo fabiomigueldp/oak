@@ -22,6 +22,8 @@ class DeploymentTests(unittest.TestCase):
         (self.repo / 'public/index.html').write_text('new release')
         (self.live / 'index.html').write_text('previous release')
         (self.live / 'status.json').write_text('runtime state')
+        (self.live / 'data/activity').mkdir(parents=True)
+        (self.live / 'data/activity/index.json').write_text('sampled history')
         self.state = root / 'deployments'
         for name, value in [('REPO', self.repo), ('STATE', self.state),
                             ('TARGETS', {'public/index.html': self.live / 'index.html'})]:
@@ -42,6 +44,7 @@ class DeploymentTests(unittest.TestCase):
             deploy.main('a' * 40)
         self.assertEqual((self.live / 'index.html').read_text(), 'new release')
         self.assertEqual((self.live / 'status.json').read_text(), 'runtime state')
+        self.assertEqual((self.live / 'data/activity/index.json').read_text(), 'sampled history')
         self.assertEqual(json.loads((self.state / 'current.json').read_text())['commit'], 'a' * 40)
 
     def test_failed_health_restores_previous_files(self):
@@ -50,6 +53,7 @@ class DeploymentTests(unittest.TestCase):
                 deploy.main('b' * 40)
         self.assertEqual((self.live / 'index.html').read_text(), 'previous release')
         self.assertEqual((self.live / 'status.json').read_text(), 'runtime state')
+        self.assertEqual((self.live / 'data/activity/index.json').read_text(), 'sampled history')
         self.assertFalse((self.state / 'current.json').exists())
 
     def test_new_assets_are_installed_and_recorded_as_previously_absent(self):

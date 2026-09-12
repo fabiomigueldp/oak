@@ -9,6 +9,7 @@ node_modules/
 *.key
 server.properties
 status.json
+public/data/activity/
 map-warning.json
 world/
 backups/

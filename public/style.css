@@ -30,6 +30,9 @@ h1, h2 { margin: 0; }
 .brand { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--accent); font-size: 30px; font-weight: 650; letter-spacing: -1.5px; }
 .brand img { flex: none; border-radius: 4px; }
 .header-actions { display: flex; align-items: center; gap: 24px; }
+.activity-link { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; font-size: 12px; color: var(--muted); }
+.activity-link:hover, .presence-history:hover { color: var(--accent); }
+.presence-history { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin-bottom: -10px; margin-top: 7px; color: var(--muted); font-size: 11px; }
 #state { color: var(--muted); font-size: 12px; }
 #state[data-state="online"] { color: var(--accent); }
 button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text); transition: background-color 160ms ease-out; }
@@ -118,6 +121,7 @@ textarea:focus-visible { outline: none; }
   .brand { font-size: 27px; gap: 5px; }
   .brand svg { width: 24px; }
   .header-actions { gap: 10px; }
+  .header-actions .activity-link { display: none; }
   #state { font-size: 11px; max-width: 82px; }
   #copy { padding-inline: 10px; gap: 6px; }
   #copy svg { display: none; }

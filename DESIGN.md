@@ -1,5 +1,13 @@
 # Oak design
 
+The activity timeline opens directly on the last 24 hours. A quiet day ribbon
+navigates history, with one week toggle and no filter, sort or date form. Forest
+surfaces, system type and muted skin colors let the sessions carry the page.
+Fit the full chart on mobile with fewer ticks. Player identities anchor each lane;
+inline details make narrow bars accessible. Keep collection notes disclosed and
+show unknown gaps honestly. Avoid introductory copy, metric panels, continuous
+animation and chart libraries.
+
 Use the oak artwork in `public/brand/` for server, browser and application identity.
 Use explicit image dimensions: the 64px export for compact app marks, 32px for
 browser tabs, 180px for Apple touch icons and 512px for square sharing previews.

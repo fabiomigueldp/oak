@@ -14,5 +14,7 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=/srv/oak/web
+StateDirectory=oak-presence
+StateDirectoryMode=0700
 [Install]
 WantedBy=multi-user.target

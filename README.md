@@ -1,5 +1,9 @@
 # Oak
 
+The public [activity timeline](docs/activity.md) at `/activity/` shows who played
+and when, with daily/week views, skin-colored sessions and explicit collection
+gaps. A persistent collector publishes static daily files for all visitors.
+
 A minimal player dashboard for [oak.fabiomigueldp.me](https://oak.fabiomigueldp.me): an embedded BlueMap atlas, online players, public game chat, and a bounded website-to-Minecraft chat bridge.
 
 The private **Oak Control** application at `/admin/` adds passkeys, live oversight,

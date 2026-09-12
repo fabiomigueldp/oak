@@ -19,6 +19,8 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y restic
       - run: python scripts/check.py
       - run: node --check public/app.js
+      - run: node --check public/activity.js
+      - run: node --test tests/test_activity_model.mjs
       - run: node --check public/map-profile.js
       - run: node --test tests/test_map_profile.js
       - run: python -m pip install -r requirements-admin.txt

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#18211c">
+  <title>Atividade · Oak</title>
+  <meta name="description" content="Os encontros de Oak, ao longo do tempo.">
+  <link rel="canonical" href="https://oak.fabiomigueldp.me/activity/">
+  <link rel="icon" href="/brand/favicon.ico?v=1" sizes="any">
+  <link rel="apple-touch-icon" href="/brand/oak-180.png?v=1">
+  <link rel="stylesheet" href="/style.css?v=8">
+  <link rel="stylesheet" href="/activity.css?v=2">
+  <script type="module" src="/activity.js?v=2"></script>
+</head>
+<body class="activity-page">
+  <a class="skip" href="#main">Ir para a atividade</a>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="Oak, início"><img src="/brand/oak-64.png?v=1" width="36" height="36" alt="">Oak</a>
+    <nav class="site-nav" aria-label="Principal"><a href="/">Mapa</a><a href="/activity/" aria-current="page">Atividade</a></nav>
+  </header>
+  <main id="main" tabindex="-1">
+    <section class="activity-surface" aria-label="Atividade dos jogadores">
+      <div class="activity-heading">
+        <h1 id="period-title">Últimas 24 horas</h1>
+        <div class="period-actions"><span id="collection-state" class="collection-state" role="status"></span><button id="today" type="button" hidden>Agora</button><button id="week-view" type="button" aria-pressed="false">7 dias</button></div>
+      </div>
+      <nav class="day-navigation" aria-label="Dias de atividade">
+        <button type="button" id="previous" class="date-arrow" aria-label="Semana anterior"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>
+        <div id="day-strip" class="day-strip"></div>
+        <button type="button" id="next" class="date-arrow" aria-label="Próxima semana"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button>
+      </nav>
+      <div id="activity-feedback" class="activity-feedback" role="status" hidden><p id="feedback-text"></p><button id="retry" type="button" hidden>Tentar novamente</button></div>
+      <p id="timeline-help" class="sr-only">Uma linha por jogador, com cada sessão nos horários observados. Selecione uma barra ou um jogador para ver os detalhes. Use as setas para navegar pelas barras. Os horários são de Brasília.</p>
+      <svg width="0" height="0" class="pattern-defs" aria-hidden="true"><defs><pattern id="gap-pattern" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M-1 1L1-1M0 6L6 0M5 7L7 5" stroke="currentColor" stroke-opacity=".12" stroke-width=".6"/></pattern></defs></svg>
+      <div id="timeline-scroll" class="timeline-scroll" tabindex="0" role="region" aria-label="Linha do tempo dos jogadores" aria-describedby="timeline-help" aria-busy="true">
+        <div class="timeline-grid" id="timeline-grid">
+          <div class="concurrency-row"><div class="concurrency-caption"><span id="player-count">Jogadores</span><span id="peak-caption"></span></div><div class="concurrency-plot" id="concurrency-plot" aria-hidden="true"></div></div>
+          <div class="chart-axis"><div class="axis-caption">Brasília</div><div id="time-axis" class="time-axis"></div></div>
+          <div id="player-rows"><div class="timeline-skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div>
+        </div>
+      </div>
+      <div id="timeline-empty" class="timeline-empty" hidden><svg width="48" height="32" viewBox="0 0 48 32" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 5h46M1 16h46M1 27h46" opacity=".2"/><path d="M8 5h15m7 11h10M13 27h18" stroke-width="4" stroke-linecap="round"/></svg><h2 id="empty-title"></h2><p id="empty-description"></p></div>
+      <div class="timeline-bottom"><span id="gap-legend" class="gap-legend" hidden><i></i>Sem registro</span><button type="button" id="more-players" hidden>Mais jogadores</button><details class="history-info"><summary aria-label="Sobre os registros" title="Sobre os registros">i</summary><p id="history-note">Os horários são aproximados. Intervalos sem coleta não entram no tempo jogado.</p></details></div>
+      <section class="session-detail" id="session-detail" aria-labelledby="detail-title" hidden tabindex="-1">
+        <div class="detail-header"><div id="detail-identity"></div><button type="button" id="close-detail" aria-label="Fechar detalhes">×</button></div>
+        <div id="detail-content"></div>
+      </section>
+    </section>
+    <noscript><p class="activity-feedback">Ative o JavaScript para ver os registros.</p></noscript>
+  </main>
+</body>
+</html>

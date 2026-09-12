@@ -13,6 +13,8 @@ subprocess.run([sys.executable, str(ROOT / 'tests/test_deploy.py')], check=True)
 subprocess.run([sys.executable, str(ROOT / 'tests/test_map_adapter.py')], check=True)
 subprocess.run([sys.executable, str(ROOT / 'tests/test_map_defaults.py')], check=True)
 subprocess.run([sys.executable, str(ROOT / 'tests/test_server_status.py')], check=True)
+subprocess.run([sys.executable, str(ROOT / 'tests/test_presence.py')], check=True)
+subprocess.run([sys.executable, str(ROOT / 'tests/test_activity_skins.py')], check=True)
 subprocess.run([sys.executable, str(ROOT / 'tests/test_backup_repository.py')], check=True)
 for name in ('test_operator_kernel.py', 'test_operator_tools.py', 'test_operator_extensions.py', 'test_operator_world.py', 'test_operator_integration.py', 'test_external_backup.py'):
     subprocess.run([sys.executable, str(ROOT / 'tests' / name)], check=True)

@@ -15,6 +15,10 @@ TARGETS = {
     'public/index.html': Path('/srv/oak/web/index.html'),
     'public/style.css': Path('/srv/oak/web/style.css'),
     'public/app.js': Path('/srv/oak/web/app.js'),
+    'public/activity/index.html': Path('/srv/oak/web/activity/index.html'),
+    'public/activity.css': Path('/srv/oak/web/activity.css'),
+    'public/activity.js': Path('/srv/oak/web/activity.js'),
+    'public/activity-model.mjs': Path('/srv/oak/web/activity-model.mjs'),
     'public/map-profile.js': Path('/srv/oak/web/map-profile.js'),
     'public/map-profile.css': Path('/srv/oak/web/map-profile.css'),
     'public/map-admin-bridge.js': Path('/srv/oak/web/map-admin-bridge.js'),
@@ -22,6 +26,8 @@ TARGETS = {
     'public/map-admin-bridge.css': Path('/srv/oak/web/map-admin-bridge.css'),
     'server/chat-server.py': Path('/srv/oak/chat-server.py'),
     'server/collect.py': Path('/srv/oak/collect.py'),
+    'server/presence.py': Path('/srv/oak/presence.py'),
+    'server/activity_skins.py': Path('/srv/oak/activity_skins.py'),
     'deploy/nginx.conf': Path('/srv/oak/nginx.conf'),
     'deploy/systemd/oak-chat.service': Path('/etc/systemd/system/oak-chat.service'),
     'deploy/systemd/oak-web-collector.service': Path('/etc/systemd/system/oak-web-collector.service'),
@@ -55,13 +61,13 @@ def activate(changed):
         run('systemctl', 'daemon-reload')
     if {'server/chat-server.py', 'deploy/systemd/oak-chat.service'} & changed:
         run('systemctl', 'restart', 'oak-chat')
-    if {'server/collect.py', 'deploy/systemd/oak-web-collector.service'} & changed:
+    if {'server/collect.py', 'server/presence.py', 'server/activity_skins.py', 'deploy/systemd/oak-web-collector.service'} & changed:
         run('systemctl', 'restart', 'oak-web-collector')
     if 'deploy/nginx.conf' in changed:
         run('docker', 'exec', 'oak-web', 'nginx', '-t')
         run('docker', 'exec', 'oak-web', 'nginx', '-s', 'reload')
 
-def health(map_assets=None, admin_assets=None):
+def health(map_assets=None, admin_assets=None, activity_assets=None):
     for attempt in range(5):
         try:
             run('systemctl', 'is-active', '--quiet', 'oak-chat', 'oak-web-collector')
@@ -91,6 +97,23 @@ def health(map_assets=None, admin_assets=None):
                 data = json.load(response)
                 if time.time() - data['updated'] > 30:
                     raise RuntimeError('Stale status collector.')
+            if activity_assets:
+                for asset, expected in activity_assets.items():
+                    with urllib.request.urlopen('https://oak.fabiomigueldp.me/' + asset + '?deployment-check=' + str(time.time_ns()), timeout=10) as response:
+                        if response.read() != expected:
+                            raise RuntimeError('Unexpected activity asset: ' + asset)
+                        if asset.endswith('.mjs') and 'javascript' not in response.headers.get('Content-Type', ''):
+                            raise RuntimeError('Activity module has an invalid MIME type.')
+                with urllib.request.urlopen('https://oak.fabiomigueldp.me/data/activity/index.json', timeout=10) as response:
+                    activity = json.load(response)
+                    if activity.get('version') != 1 or time.time() - activity.get('updated', 0) > 90 or not isinstance(activity.get('days'), list):
+                        raise RuntimeError('Activity history is not ready.')
+                latest = activity.get('latestDay')
+                if latest and latest in activity['days']:
+                    with urllib.request.urlopen('https://oak.fabiomigueldp.me/data/activity/' + latest + '.json', timeout=10) as response:
+                        shard = json.load(response)
+                        if shard.get('version') != 1 or shard.get('day') != latest or not isinstance(shard.get('coverage'), list) or not isinstance(shard.get('players'), list):
+                            raise RuntimeError('Activity daily history is unavailable.')
             with urllib.request.urlopen('https://oak.fabiomigueldp.me/api/events', timeout=10) as response:
                 if 'text/event-stream' not in response.headers.get('Content-Type', ''):
                     raise RuntimeError('SSE endpoint is unavailable.')
@@ -145,7 +168,9 @@ def main(sha):
         health({Path(name).name: (REPO / name).read_bytes() for name in TARGETS
                 if name.startswith('public/map-profile.')},
                {Path(name).name: (REPO / name).read_bytes() for name in TARGETS
-                if name.startswith('public/admin/') and not name.endswith('/index.html')})
+                if name.startswith('public/admin/') and not name.endswith('/index.html')},
+               {name.removeprefix('public/'): (REPO / name).read_bytes() for name in TARGETS
+                if name.startswith('public/activity')})
     except Exception:
         for name in changed:
             if manifest[name]['existed']:
@@ -155,7 +180,9 @@ def main(sha):
                 TARGETS[name].unlink(missing_ok=True)
         activate(changed)
         health({Path(name).name: (backup / name).read_bytes() for name in TARGETS
-                if name.startswith('public/map-profile.') and manifest[name]['existed']})
+                if name.startswith('public/map-profile.') and manifest[name]['existed']},
+               activity_assets={name.removeprefix('public/'): (backup / name).read_bytes() for name in TARGETS
+                if name.startswith('public/activity') and manifest[name]['existed']})
         print('Deployment rejected; previous files restored.', file=sys.stderr)
         raise
     result = {'commit': sha, 'deployed_at': stamp, 'previous': previous.get('commit') if previous else None}

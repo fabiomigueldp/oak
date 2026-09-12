@@ -1,5 +1,12 @@
 # Production deployment
 
+The public [activity timeline](../docs/activity.md) deploys with the website.
+Its collector modules are `/srv/oak/presence.py` and `/srv/oak/activity_skins.py`;
+changes restart only `oak-web-collector`. The unit creates private persistent
+`/var/lib/oak-presence` state. Generated `/srv/oak/web/data/activity` files and
+cached skins remain outside Git and release snapshots. Health checks validate
+the activity page/assets, module MIME, fresh manifest and latest daily shard.
+
 The private administrative service has a separate explicit installation and
 recovery procedure: [Oak Control operations](../docs/admin-control.md). Website
 deployment includes its static interface and fixed API proxy, but does not install
