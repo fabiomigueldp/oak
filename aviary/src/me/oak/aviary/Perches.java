@@ -160,7 +160,7 @@ public final class Perches {
         }
         String id=old==null?"p_"+UUID.randomUUID().toString().replace("-","").substring(0,24):old.id();
         if(app.busyPort(id)){hint(p,"A bird is using this perch.");return false;}
-        if(old==null&&(app.store.ports.size()>=128||app.store.ports.values().stream().filter(q->q.owner().equals(p.getUUID().toString())).count()>=app.store.network.maxOwnedPerches())){hint(p,"You have reached the perch limit.");return false;}
+        if(old==null&&app.store.ports.size()>=128){hint(p,"You have reached the perch limit.");return false;}
         var port=candidate(p,block,id,old);
         if(app.store.ports.values().stream().anyMatch(q->!q.id().equals(id)&&q.dimension().equals(port.dimension())&&Journey.position(q).distanceTo(Journey.position(port))<8)){hint(p,"Leave 8 blocks between perches.");return false;}
         String issue=Journey.placementIssue(p.level(),port);if(!issue.isEmpty()){hint(p,issue);return false;}

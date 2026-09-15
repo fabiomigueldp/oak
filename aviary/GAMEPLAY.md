@@ -17,19 +17,24 @@
 3. Hold Perch in the main hand and use the top of a solid block in the Overworld.
    Its preview marks direction, resting volume and a dismount point. Placement
    needs safe space, not a fixed platform size. It opens the destination menu.
-4. Use Whistle, choose a destination and select **Call bird**. Stay nearby, then
-   use the saddle to board. Calling alone does not move or protect the player.
+4. Use Whistle and choose a destination to call the bird. Follow the ground marker
+   and use the saddle to board. Calling alone does not move or protect the player.
+   There is no per-player perch quota.
 
 ## Travel
 
-- **Travel: Full/Quick** and **Camera: Follow/Free** persist per player.
+- **Options** holds **Travel: Full/Quick** and **Camera: Follow/Free**, saved per player.
   Free retains the player's first-person/F5 choice; the server cannot set F5.
 - Hold Shift for about 0.4 seconds while riding to request a safe shortened trip.
 - Before boarding, use the whistle's **Cancel** action or walk away. Damage,
   disconnects and the boarding timeout also cancel an unboarded call.
 - If occupied, **Wait for a bird** queues the call for up to one minute.
 - Without a departure perch, field pickup can find nearby loaded open-air ground.
-  Stand on the ground; the destination must still be known and accessible.
+  Stand on the ground; the destination must still be known and accessible. The
+  search reaches 12 blocks away and two blocks up/down. If a perch approach is
+  blocked, it tries nearby ground without moving the registered perch. Terrain
+  still needs safe clearance; the marker identifies the boarding point, not a
+  walking route. Stay within 24 blocks while the bird approaches.
 - **Fly with a friend** requires two nearby Java players at the same departure
   perch, pack acceptance, destination access and two available flight slots.
   The friend accepts explicitly. Each gets a bird; takeoff and landing are
@@ -40,7 +45,9 @@
 New perches are private. Use **Access** to share them or **Guests** to invite
 online players. Public destinations may require visiting before appearing in the
 whistle, depending on network policy. A public hub bypasses discovery, never
-private access. Favorites and discovered destinations belong to the player profile.
+private access. In **Options → Manage destinations**, set home or favorites.
+The whistle sorts home first, then favorites, the five most recent arrivals, and
+nearby destinations. The same destination options include **Fly with a friend**.
 
 Use **Rename** and **Appearance** for destination/bird names, oak/spruce/birch
 wood and sixteen cloth colors. Bird plumage is stable per owner; it is not a
@@ -53,7 +60,7 @@ and grants no travel advantage. Use another item or an empty hand to board.
 - **Move → Pack perch** needs a free inventory slot. Place the returned kit at
   the new support; identity, guests and favorites remain intact.
 - If the support breaks or a kit is lost, craft a new Perch and use
-  **Whistle → Packed perches → destination → Recover kit**.
+  **Whistle → Options → Packed perches → destination → Recover kit**.
 - **Remove** requires a separate confirmation and an idle destination. Refunds
   depend on the stored kit state; removal does not duplicate lost kits.
 - Legacy destinations remain usable. Placing a Perch within six blocks of an

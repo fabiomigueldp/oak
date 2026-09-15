@@ -12,16 +12,17 @@ public final class AviaryStore implements AutoCloseable {
     public record Port(String id,String name,String dimension,double x,double y,double z,float yaw,String owner,boolean shared,Float departureYaw,Float arrivalYaw) {
         public Port(String id,String name,String dimension,double x,double y,double z,float yaw,String owner,boolean shared){this(id,name,dimension,x,y,z,yaw,owner,shared,null,null);}
     }
-    public record Preferences(Set<String> favorites,boolean quick,boolean freeCamera,Set<String> discovered) {
+    public record Preferences(Set<String> favorites,boolean quick,boolean freeCamera,Set<String> discovered,List<String> recent,String home,boolean introduced) {
         public Preferences(Set<String> favorites,boolean quick,boolean freeCamera){this(favorites,quick,freeCamera,Set.of());}
-        public Preferences {favorites=Set.copyOf(favorites==null?Set.of():favorites);discovered=Set.copyOf(discovered==null?Set.of():discovered);}
+        public Preferences(Set<String> favorites,boolean quick,boolean freeCamera,Set<String> discovered){this(favorites,quick,freeCamera,discovered,List.of(),"",false);}
+        public Preferences {favorites=Set.copyOf(favorites==null?Set.of():favorites);discovered=Set.copyOf(discovered==null?Set.of():discovered);recent=recent==null?List.of():recent.stream().filter(Objects::nonNull).distinct().limit(5).toList();home=home==null?"":home;}
     }
     /** A placed object is separate from its address and the bird's landing position. */
     public record PerchData(int x,int y,int z,String color,String style,String birdName,Set<String> guests,boolean hub,boolean active) {
         public PerchData(int x,int y,int z,String color,boolean active){this(x,y,z,color,"oak","Condor",Set.of(),false,active);}
         public PerchData {guests=Set.copyOf(guests==null?Set.of():guests);}
     }
-    public record NetworkPolicy(boolean fieldPickup,boolean discoverPublic,int maxOwnedPerches) {}
+    public record NetworkPolicy(boolean fieldPickup,boolean discoverPublic) {}
     public static final Set<String> COLORS=Set.of("white","orange","magenta","light_blue","yellow","lime","pink","gray","light_gray","cyan","purple","blue","brown","green","red","black");
     public static final Set<String> STYLES=Set.of("oak","spruce","birch");
     public record Recovery(String player,String originDimension,double x,double y,double z,float yaw,
@@ -35,7 +36,7 @@ public final class AviaryStore implements AutoCloseable {
     public final Map<String,PerchData> perches=new LinkedHashMap<>();
     public final Map<UUID,Recovery> recoveries=new ConcurrentHashMap<>();
     public Settings settings=new Settings(false,"","",500,2);
-    public NetworkPolicy network=new NetworkPolicy(true,true,4);
+    public NetworkPolicy network=new NetworkPolicy(true,true);
     public long revision=0;
     public String error="";
     private final Map<UUID,Preferences> preferences=new HashMap<>();
@@ -102,7 +103,7 @@ public final class AviaryStore implements AutoCloseable {
         for(Float heading:new Float[]{p.departureYaw(),p.arrivalYaw()})if(heading!=null&&(!Float.isFinite(heading)||heading< -180||heading>180))throw new IllegalArgumentException("Invalid approach heading");
     }
     private static boolean label(String text,int length){return text!=null&&!text.isBlank()&&text.length()<=length&&text.codePoints().noneMatch(Character::isISOControl);}
-    public static void validate(NetworkPolicy p){if(p==null||p.maxOwnedPerches()<1||p.maxOwnedPerches()>16)throw new IllegalArgumentException("Per-player perch limit must be between 1 and 16.");}
+    public static void validate(NetworkPolicy p){if(p==null)throw new IllegalArgumentException("Network policy is missing.");}
     public static void validate(PerchData p){
         if(p==null||Math.abs((long)p.x())>29999000||Math.abs((long)p.z())>29999000||p.y()<-61||p.y()>290||!COLORS.contains(p.color())||!STYLES.contains(p.style())||!label(p.birdName(),32)||p.guests().size()>64)throw new IllegalArgumentException("Invalid perch");
         for(String guest:p.guests())UUID.fromString(guest);

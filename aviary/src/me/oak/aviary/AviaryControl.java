@@ -49,8 +49,8 @@ final class AviaryControl implements AutoCloseable {
         if(action.equals("status"))return status();
         if(action.equals("policy")){
             if(request.get("revision").getAsLong()!=app.store.revision)throw new IllegalArgumentException("Aviary changed. Refresh before saving.");
-            if(!request.keySet().stream().allMatch(Set.of("action","revision","fieldPickup","discoverPublic","maxOwnedPerches","maxFlights","shortcutDistance","id")::contains))throw new IllegalArgumentException("Unsupported fields.");
-            var previous=app.store.network;var next=new AviaryStore.NetworkPolicy(request.get("fieldPickup").getAsBoolean(),request.get("discoverPublic").getAsBoolean(),request.get("maxOwnedPerches").getAsInt());
+            if(!request.keySet().stream().allMatch(Set.of("action","revision","fieldPickup","discoverPublic","maxFlights","shortcutDistance","id")::contains))throw new IllegalArgumentException("Unsupported fields.");
+            var previous=app.store.network;var next=new AviaryStore.NetworkPolicy(request.get("fieldPickup").getAsBoolean(),request.get("discoverPublic").getAsBoolean());
             var previousSettings=app.store.settings;
             var settings=new AviaryStore.Settings(previousSettings.enabled(),previousSettings.packUrl(),previousSettings.packSha1(),request.has("shortcutDistance")?request.get("shortcutDistance").getAsDouble():previousSettings.shortcutDistance(),request.has("maxFlights")?request.get("maxFlights").getAsInt():previousSettings.maxFlights());
             AviaryStore.validate(next);AviaryStore.validate(settings);app.store.network=next;app.store.settings=settings;
@@ -93,7 +93,7 @@ final class AviaryControl implements AutoCloseable {
             var owner=app.server.getPlayerList().getPlayer(UUID.fromString(p.owner()));if(owner!=null)port.addProperty("ownerName",owner.getGameProfile().name());
             if(perch!=null){var names=new JsonObject();for(String guest:perch.guests()){var player=app.server.getPlayerList().getPlayer(UUID.fromString(guest));if(player!=null)names.addProperty(guest,player.getGameProfile().name());}port.add("guestNames",names);}
             if(checks.containsKey(p.id())&&checks.get(p.id()).get("revision").getAsLong()==app.store.revision)port.add("check",checks.get(p.id()).deepCopy());ports.add(port);
-        }result.add("ports",ports);JsonArray flights=new JsonArray();for(var j:app.journeys.values())flights.add(j.status());result.add("flights",flights);return result;
+        }result.add("ports",ports);result.add("diagnostics",app.diagnostics.status());JsonArray flights=new JsonArray();for(var j:app.journeys.values())flights.add(j.status());result.add("flights",flights);return result;
     }
     public void close(){running=false;try{if(listener!=null){listener.close();Files.deleteIfExists(socket);}}catch(Exception ignored){}}
 }

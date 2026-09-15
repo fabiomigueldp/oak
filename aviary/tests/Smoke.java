@@ -90,6 +90,7 @@ public final class Smoke implements ModInitializer {
                     player.setPos(.5,80,.5);level.addNewPlayer(player);player.getInventory().setItem(0,new ItemStack(Items.DIAMOND,7));
                     NetworkRegression.run(app,player);
                     PerchRegression.lifecycle(app,player);
+                    LandingRegression.check(level);
                     app.journeys.put(player.getUUID(),new Journey(app,player,app.store.ports.get("p0"),app.store.ports.get("p48")));
                     if(Aviary.isTravelling(player.getUUID())||app.store.recoveries.containsKey(player.getUUID()))throw new AssertionError("Waiting call changed protection/recovery state");
                     var beforeCancel=player.position();app.journeys.get(player.getUUID()).abort("Test cancelled call");
@@ -162,8 +163,10 @@ public final class Smoke implements ModInitializer {
                         if(!staggered||Math.abs(player.getX()-.5)>3||Math.abs(companion.getX()-.5)>3||companion.isPassenger()||Aviary.isTravelling(companion.getUUID())||app.store.recoveries.containsKey(companion.getUUID()))throw new AssertionError("Companion trip did not finish cleanly");
                         player.setPos(200.5,80,.5);player.setOnGround(true);var level=player.level();for(int x=195;x<=206;x++)for(int z=-6;z<=6;z++)level.setBlock(new BlockPos(x,79,z),Blocks.STONE.defaultBlockState(),3);
                         var field=Journey.fieldOrigin(player);if(field==null||field.id().equals("p0")||app.store.ports.containsKey(field.id()))throw new AssertionError("Field pickup registered a permanent destination");
+                        // A newly obstructed registered root must use nearby safe ground, keeping its address.
+                        level.setBlock(new BlockPos(0,80,0),Blocks.STONE.defaultBlockState(),3);
                         app.journeys.put(player.getUUID(),new Journey(app,player,field,app.store.ports.get("p0")));companion=null;stage=7;System.out.println("AVIARY_SMOKE field pickup started");
-                    } else if(stage==7){if(Math.abs(player.getX()-.5)>3)throw new AssertionError("Field pickup did not arrive");System.out.println("AVIARY_SMOKE PASS "+packets);server.halt(false);stage=8;}
+                    } else if(stage==7){if(Math.abs(player.getX()-.5)>12||Math.abs(player.getZ()-.5)>12||app.store.ports.get("p0").x()!=.5||app.store.ports.get("p0").z()!=.5)throw new AssertionError("Field pickup fallback did not preserve its destination");System.out.println("AVIARY_SMOKE PASS "+packets);server.halt(false);stage=8;}
                 } else if(stage==3&&++interruptTicks>=45){app.journeys.get(player.getUUID()).abort("Test interruption");}
                 if(stage==4&&!visualPassengers.isEmpty())throw new AssertionError("Free camera received a duplicate passenger");
             }catch(Throwable e){e.printStackTrace();System.out.println("AVIARY_SMOKE FAIL");server.halt(false);}

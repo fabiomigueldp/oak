@@ -10,7 +10,7 @@ COLORS = frozenset(('white', 'orange', 'magenta', 'light_blue', 'yellow', 'lime'
 STYLES = frozenset(('oak', 'spruce', 'birch'))
 PORT_FIELDS = frozenset(('action', 'port', 'revision', 'name', 'shared', 'departureYaw', 'arrivalYaw'))
 PERCH_FIELDS = frozenset(('color', 'style', 'birdName', 'hub'))
-POLICY_FIELDS = frozenset(('action', 'revision', 'fieldPickup', 'discoverPublic', 'maxOwnedPerches'))
+POLICY_FIELDS = frozenset(('action', 'revision', 'fieldPickup', 'discoverPublic'))
 TRAVEL_FIELDS = frozenset(('maxFlights', 'shortcutDistance'))
 
 
@@ -32,8 +32,6 @@ def validate_aviary(params):
             raise ValueError('A complete network policy is required.')
         if any(type(params[key]) is not bool for key in ('fieldPickup', 'discoverPublic')):
             raise ValueError('Invalid network policy.')
-        if type(params['maxOwnedPerches']) is not int or not 1 <= params['maxOwnedPerches'] <= 16:
-            raise ValueError('Use a limit between 1 and 16 perches per player.')
         if 'maxFlights' in params and (type(params['maxFlights']) is not int or not 1 <= params['maxFlights'] <= 4):
             raise ValueError('Use a limit between 1 and 4 simultaneous flights.')
         if 'shortcutDistance' in params and (type(params['shortcutDistance']) not in (int, float)

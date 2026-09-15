@@ -59,6 +59,7 @@ final class GroupFlights {
             if((anchor!=null&&!anchor.active())||(target!=null&&!target.active()))throw new IllegalArgumentException("A perch was moved. Call again after it is placed.");
             if(app.journeys.size()+2>app.store.settings.maxFlights()||app.busyPort(origin.id())||app.busyPort(destination.id()))throw new IllegalArgumentException("The route is busy. Invite your friend again when two birds are available.");
             boolean quick=app.store.preferences(leader.getUUID()).quick();String group=invitation.token().toString();
+            app.diagnostics.called();app.diagnostics.called();
             Journey first=new Journey(app,leader,origin,destination,group,quick);app.journeys.put(leader.getUUID(),first);
             try{Journey second=new Journey(app,friend,origin,destination,group,quick);app.journeys.put(friend.getUUID(),second);}
             catch(Exception e){first.abort("Could not call both birds. Try again.");throw e;}

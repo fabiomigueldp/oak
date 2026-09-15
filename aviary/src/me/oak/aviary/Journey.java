@@ -20,7 +20,12 @@ final class Journey {
     private static final Map<ChunkPos,Integer> REFERENCES=new HashMap<>();
     final ServerPlayer player;
     private final Aviary app;
-    private final AviaryStore.Port origin,destination;
+    private AviaryStore.Port origin,destination;
+    private final AviaryStore.Port requestedOrigin,requestedDestination;
+    private LandingSearch originSearch,destinationSearch;
+    private boolean findingOrigin,findingDestination;
+    private int originAttempts,destinationAttempts;
+    private final long preparationStarted=System.nanoTime();
     private final ServerLevel level;
     private final Set<ChunkPos> tickets=new HashSet<>();
     private final List<CompletableFuture<?>> loads=new ArrayList<>();
@@ -56,11 +61,39 @@ final class Journey {
     }
     Journey(Aviary app,ServerPlayer player,AviaryStore.Port origin,AviaryStore.Port destination,String group,boolean quick) {
         this.app=app;this.player=player;this.origin=origin;this.destination=destination;level=player.level();current=position(origin);
+        requestedOrigin=origin;requestedDestination=destination;
+        findingOrigin=origin.id().startsWith("field-");
+        if(findingOrigin)originSearch=new LandingSearch(level,origin);
         this.group=group;shortcutDistance=app.store.settings.shortcutDistance();
         yaw=(float)Math.toDegrees(Math.atan2(destination.z()-origin.z(),destination.x()-origin.x()))-90;facing=yaw;
         var preferences=app.store.preferences(player.getUUID());freeCamera=preferences.freeCamera();this.quick=quick;skip=quick;
-        try {hold(chunk(position(origin)),2);hold(chunk(position(destination)),2);}
+        try {if(!findingOrigin)hold(chunk(position(origin)),2);hold(chunk(position(destination)),2);}
         catch(RuntimeException e){releaseTickets();throw e;}
+    }
+    private boolean resolveLanding(boolean arrival) {
+        if(!(arrival?findingDestination:findingOrigin))return true;
+        var search=arrival?destinationSearch:originSearch;
+        if(!search.step(app.planningDeadline))return false;
+        var point=search.result();
+        if(point==null)throw new IllegalStateException((arrival?requestedDestination.name()+": ":"")+"No landing spot nearby. Move to open ground or clear space around the perch.");
+        if(arrival){destination=point;findingDestination=false;}else {origin=point;findingOrigin=false;current=position(point);}
+        hold(chunk(position(point)),1);planner=null;
+        return false;
+    }
+    private void retryLanding(boolean arrival) {
+        var requested=arrival?requestedDestination:requestedOrigin;
+        var perch=app.store.perches.get(requested.id());
+        if(perch!=null&&!perch.active())throw new IllegalStateException(requested.name()+": place this perch before travelling.");
+        if((arrival?++destinationAttempts:++originAttempts)>8)throw new IllegalStateException(requested.name()+": no clear approach nearby. Clear space above or beside the perch.");
+        if(arrival){if(destinationSearch==null)destinationSearch=new LandingSearch(level,requested);findingDestination=true;}
+        else {if(originSearch==null)originSearch=new LandingSearch(level,requested);findingOrigin=true;}
+        planner=null;
+    }
+    private void meetingPoint() {
+        var point=boardingSpot(level,origin);if(point==null)return;
+        var dust=new net.minecraft.core.particles.DustParticleOptions(0xb6d6a3,.65f);
+        for(int n=0;n<8;n++){double a=n*Math.PI/4;level.sendParticles(player,dust,false,false,point.x+Math.cos(a)*.42,point.y+.08,point.z+Math.sin(a)*.42,1,0,0,0,0);}
+        if(age%40==0)hint(player.position().distanceTo(point)>3?"Meet your bird at the marker · "+Math.round(player.position().distanceTo(point))+" blocks":"Use the saddle to board");
     }
     private static ChunkPos chunk(Vec3 p){return new ChunkPos(((int)Math.floor(p.x))>>4,((int)Math.floor(p.z))>>4);}
     static Vec3 position(AviaryStore.Port p){return new Vec3(p.x(),p.y(),p.z());}
@@ -106,11 +139,11 @@ final class Journey {
     }
     boolean board() {
         if(!phase.equals("wait")||player.position().distanceTo(current)>4.5||player.isPassenger()||player.isSleeping()||player.isSpectator()||!player.isAlive())return false;
-        if(!clearPort(level,origin)||!clearPort(level,destination)){abort("The landing area changed. Call again after clearing it.");return false;}
+        if(!clearPort(level,origin)||!clearPort(level,destination)){fail("The landing area changed. Call again after clearing it.");return false;}
         // Waiting never suppresses movement or damage and has no recovery record.
         app.protect(player.getUUID());
         try {journal=app.store.journal(record(false));next("securing");return true;}
-        catch(RuntimeException e){abort("Could not prepare the flight. Please try again.");return false;}
+        catch(RuntimeException e){fail("Could not prepare the flight. Please try again.");return false;}
     }
     com.google.gson.JsonObject status(){var value=new com.google.gson.JsonObject();value.addProperty("origin",origin.id());value.addProperty("destination",destination.id());value.addProperty("phase",phase);value.addProperty("seconds",age/20);return value;}
     private AviaryStore.Recovery record(boolean destinationCommitted){return new AviaryStore.Recovery(player.getUUID().toString(),origin.dimension(),origin.x(),origin.y(),origin.z(),origin.yaw(),destination.dimension(),destination.x(),destination.y(),destination.z(),destination.yaw(),destinationCommitted);}
@@ -154,16 +187,7 @@ final class Journey {
     }
     static AviaryStore.Port fieldOrigin(ServerPlayer p) {
         if(!p.level().dimension().equals(net.minecraft.world.level.Level.OVERWORLD)||!p.onGround())return null;
-        int attempts=0;
-        for(int radius:new int[]{3,5})for(int direction=0;direction<8;direction++)for(int dy:new int[]{0,-1,1,-2,2}) {
-            double angle=direction*Math.PI/4;BlockPos feet=BlockPos.containing(p.getX()+Math.sin(angle)*radius,p.getY()+dy,p.getZ()+Math.cos(angle)*radius);
-            if(!p.level().hasChunkAt(feet)||!p.level().canSeeSky(feet))continue;
-            var floor=feet.below();if(!p.level().getBlockState(floor).isCollisionShapeFullBlock(p.level(),floor)||!p.level().getBlockState(feet).isAir()||!p.level().getBlockState(feet.above()).isAir())continue;
-            var port=new AviaryStore.Port("field-"+p.getUUID().toString().replace("-", "").substring(0,20),"Field pickup","minecraft:overworld",feet.getX()+.5,feet.getY(),feet.getZ()+.5,p.getYRot(),p.getUUID().toString(),false);
-            if(placementIssue(p.level(),port).isEmpty())return port;
-            if(++attempts>=12)return null;
-        }
-        return null;
+        return new AviaryStore.Port("field-"+p.getUUID().toString().replace("-", "").substring(0,20),"Pickup","minecraft:overworld",p.getX(),p.getY(),p.getZ(),p.getYRot(),p.getUUID().toString(),false);
     }
     private ArmorStand anchor(Vec3 pos) {
         ArmorStand entity=new ArmorStand(EntityTypes.ARMOR_STAND,level);
@@ -201,26 +225,32 @@ final class Journey {
     }
     void tick() {
         if(closed)return;
-        if(++age>2800) {abort("Flight timed out. Returning to a safe perch.");return;}
+        if(++age>2800) {fail("Flight timed out. Returning to a safe perch.");return;}
         if(player.hasDisconnected()||!player.isAlive()||player.level()!=level){abort("Flight interrupted.");return;}
-        if(waiting()&&player.position().distanceTo(position(origin))>9){abort("Call cancelled.");return;}
+        if(waiting()&&player.position().distanceTo(position(origin))>24){abort("Call cancelled.");return;}
         ++phaseTick;
+        if(waiting()&&!phase.equals("prepare")&&age%10==0)meetingPoint();
         if(boarded){player.resetFallDistance();player.setLastClientInput(Input.EMPTY);player.setDeltaMovement(Vec3.ZERO);}
         if(phase.equals("prepare")) {
             if(companionPending(false)){if(age%80==1)hint("Your companion departs first");phaseTick=0;return;}
-            if(phaseTick>400)throw new IllegalStateException("Perch preparation timed out");
+            if(phaseTick>800)throw new IllegalStateException("No landing spot found. Move to a wider open area and call again.");
             if(loads.stream().anyMatch(f->!f.isDone()))return;
             for(var f:loads)f.join();
+            if(age%40==1)hint("Finding a landing spot…");
+            if(!resolveLanding(false)||!resolveLanding(true))return;
             String originIssue=portIssue(level,origin),destinationIssue=portIssue(level,destination);
-            if(!originIssue.isEmpty()||!destinationIssue.isEmpty())throw new IllegalStateException(!originIssue.isEmpty()?origin.name()+": "+originIssue:destination.name()+": "+destinationIssue);
-            if(!planScene())return;
+            if(!originIssue.isEmpty()){retryLanding(false);return;}
+            if(!destinationIssue.isEmpty()){retryLanding(true);return;}
+            try {if(!planScene())return;}
+            catch(FlightPlanner.Blocked blocked){retryLanding(blocked.arrival);return;}
+            app.diagnostics.prepared(System.nanoTime()-preparationStarted);
             bird=createBird(callScene.a);carrier=anchor(current);camera=anchor(current.add(7,3,7));
             use(callScene);facing=callScene.heading(2,yaw);
             bird.animate(callScene.a,facing,age,"call",14);
             FlightSound.play(player,"reply",callScene.a,.65f,1);
             next("call");
         } else if(phase.equals("call")) {
-            if(player.position().distanceTo(position(origin))>9){abort("Call cancelled.");return;}
+            if(player.position().distanceTo(position(origin))>24){abort("Call cancelled.");return;}
             sceneTick=Math.min(callScene.ticks,sceneTick+1);
             Vec3 target=callScene.at(sceneTick);
             facing=FlightSpace.turn(facing,callScene.heading(sceneTick+5,facing));
@@ -230,7 +260,7 @@ final class Journey {
             current=position(origin);previousBase=null;
             next("greet");
         } else if(phase.equals("greet")) {
-            if(player.position().distanceTo(position(origin))>9){abort("Call cancelled.");return;}
+            if(player.position().distanceTo(position(origin))>24){abort("Call cancelled.");return;}
             Vec3 look=player.position().subtract(current);
             float attention=net.minecraft.util.Mth.wrapDegrees((float)Math.toDegrees(Math.atan2(-look.x,look.z))-facing);
             bird.animate(current,facing,age,"greet",0,0,0,attention+Math.toDegrees(traits.lookOffset(age)),phaseTick/24.0);
@@ -241,7 +271,7 @@ final class Journey {
             if(!level.addFreshEntity(saddle))throw new IllegalStateException("Could not create saddle interaction");
             hint(traits.identityName()+" · Use the saddle to board");next("wait");
         } else if(phase.equals("wait")) {
-            if(phaseTick>600||player.position().distanceTo(current)>9){abort("Call cancelled.");return;}
+            if(phaseTick>600||player.position().distanceTo(current)>24){abort("Call cancelled.");return;}
             Vec3 look=player.position().subtract(current);float attention=net.minecraft.util.Mth.wrapDegrees((float)Math.toDegrees(Math.atan2(-look.x,look.z))-facing);
             bird.animate(current,facing,age,"greet",0,0,0,attention+Math.toDegrees(traits.lookOffset(age)),1);checkPose(current);
             if(phaseTick%80==0)hint(traits.identityName()+" · Use the saddle to board");
@@ -327,7 +357,7 @@ final class Journey {
         Aviary.restoreCamera(player);player.stopRiding();if(passenger!=null){passenger.close();passenger=null;}
         player.teleportTo(level,safe.x,safe.y,safe.z,Set.of(),facing,0,true);player.resetFallDistance();hint("");
         if(carrier!=null){carrier.discard();carrier=null;}if(camera!=null){camera.discard();camera=null;}
-        boarded=false;delivered=true;app.unprotect(player.getUUID());
+        boarded=false;delivered=true;app.unprotect(player.getUUID());app.diagnostics.completed();app.arrived(player,destination.id());
         // Keep the perch reserved for the farewell, while the player is already free.
         journal=app.store.complete(player.getUUID());
         Aviary.tell(player,"Arrived at "+destination.name()+".");next("farewell");
@@ -374,6 +404,7 @@ final class Journey {
         if(fade>0)player.removePostEffect(Identifier.parse("oak_aviary:fade_"+fade));
         fade=value;if(fade>0)player.addPostEffect(Identifier.parse("oak_aviary:fade_"+fade));player.sendPostEffects();
     }
+    void fail(String message){if(!closed){app.diagnostics.failed(destination.id(),message);abort(message);}}
     void abort(String message){if(!closed)finish(transferred?destination:origin,message);}
     private void finish(AviaryStore.Port port,String message) {
         closed=true;

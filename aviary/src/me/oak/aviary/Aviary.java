@@ -41,6 +41,7 @@ public final class Aviary implements ModInitializer {
     private long tick;
     long planningDeadline;
     private AviaryControl control;
+    final TravelDiagnostics diagnostics=new TravelDiagnostics();
     private record Call(String destination,net.minecraft.world.phys.Vec3 position,long expires) {}
     private final Map<UUID,Call> queue=new LinkedHashMap<>();
     private final Map<UUID,Long> callTimes=new HashMap<>();
@@ -76,6 +77,9 @@ public final class Aviary implements ModInitializer {
         });
         CommandRegistrationCallback.EVENT.register((dispatcher,access,environment)->dispatcher.register(Commands.literal("aviary")
             .executes(c->menu(c.getSource().getPlayerOrException()))
+            .then(Commands.literal("options").executes(c->options(c.getSource().getPlayerOrException())))
+            .then(Commands.literal("routes").executes(c->menu(c.getSource().getPlayerOrException(),0,true)).then(Commands.argument("page",com.mojang.brigadier.arguments.IntegerArgumentType.integer(0,12)).executes(c->menu(c.getSource().getPlayerOrException(),com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(c,"page"),true))))
+            .then(Commands.literal("home").then(Commands.argument("port",StringArgumentType.word()).executes(c->preference(c.getSource().getPlayerOrException(),"home",StringArgumentType.getString(c,"port")))))
             .then(Commands.literal("pack").executes(c->{sendPack(c.getSource().getPlayerOrException());return 1;}))
             .then(Commands.literal("cancel").executes(c->cancel(c.getSource().getPlayerOrException())))
             .then(Commands.literal("friends").then(Commands.argument("port",StringArgumentType.word()).executes(c->groups.menu(c.getSource().getPlayerOrException(),StringArgumentType.getString(c,"port")))))
@@ -148,7 +152,7 @@ public final class Aviary implements ModInitializer {
     void discover(ServerPlayer p,AviaryStore.Port port){
         if(!javaPlayer(p)||!accessible(port,p))return;var old=store.preferences(p.getUUID());if(old.discovered().contains(port.id()))return;
         var known=new HashSet<>(old.discovered());known.retainAll(store.ports.keySet());known.add(port.id());
-        try{store.preferences(p.getUUID(),new AviaryStore.Preferences(old.favorites(),old.quick(),old.freeCamera(),known));}
+        try{store.preferences(p.getUUID(),new AviaryStore.Preferences(old.favorites(),old.quick(),old.freeCamera(),known,old.recent(),old.home(),old.introduced()));}
         catch(Exception e){System.err.println("Aviary destination discovery could not be saved");}
     }
     AviaryStore.Port nearby(ServerPlayer p){return store.ports.values().stream().filter(q->accessible(q,p)&&(!store.perches.containsKey(q.id())||store.perches.get(q.id()).active())&&q.dimension().equals(p.level().dimension().identifier().toString())&&p.position().distanceTo(Journey.position(q))<6).min(Comparator.comparingDouble(q->p.position().distanceTo(Journey.position(q)))).orElse(null);}
@@ -159,7 +163,8 @@ public final class Aviary implements ModInitializer {
         p.openDialog(Holder.direct(new MultiActionDialog(common,buttons,Optional.of(action("Close","Return to the game",null)),2)));return 1;
     }
     int menu(ServerPlayer p){return menu(p,0);}
-    int menu(ServerPlayer p,int page) {
+    int menu(ServerPlayer p,int page) {return menu(p,page,false);}
+    int menu(ServerPlayer p,int page,boolean manage) {
         if(store==null)return 0;
         if(!javaPlayer(p)){tell(p,"Aviary requires Minecraft Java Edition.");return 0;}
         var active=journeys.get(p.getUUID());
@@ -168,22 +173,37 @@ public final class Aviary implements ModInitializer {
         var waiting=queue.get(p.getUUID());
         if(waiting!=null){var destination=store.ports.get(waiting.destination());return dialog(p,"Waiting for a bird",destination==null?"Destination unavailable":destination.name()+" · Stay nearby",List.of(action("Cancel","Leave the queue","/aviary cancel")));}
         if(groups.pending(p))return groups.pendingMenu(p);
-        var prefs=store.preferences(p.getUUID());var origin=nearby(p);
+        var origin=nearby(p);
         if(origin!=null)discover(p,origin);
+        var prefs=store.preferences(p.getUUID());
         var ports=store.ports.values().stream().filter(q->visible(q,p)&&(origin==null||!q.id().equals(origin.id())))
-            .sorted(Comparator.<AviaryStore.Port,Boolean>comparing(q->!prefs.favorites().contains(q.id())).thenComparingDouble(q->p.position().distanceTo(Journey.position(q))).thenComparing(AviaryStore.Port::id)).toList();
+            .sorted(Comparator.<AviaryStore.Port,Boolean>comparing(q->!prefs.home().equals(q.id())).thenComparing(q->!prefs.favorites().contains(q.id())).thenComparingInt(q->prefs.recent().contains(q.id())?prefs.recent().indexOf(q.id()):6).thenComparingDouble(q->p.position().distanceTo(Journey.position(q))).thenComparing(AviaryStore.Port::id)).toList();
         page=Math.clamp(page,0,Math.max(0,(ports.size()-1)/10));var buttons=new ArrayList<ActionButton>();
         for(var port:ports.subList(page*10,Math.min(ports.size(),page*10+10))) {
             long distance=Math.round(p.position().distanceTo(Journey.position(port)));
-            buttons.add(action((prefs.favorites().contains(port.id())?"★ ":"")+port.name(),distance+" blocks"+(busyPort(port.id())?" · Busy":""),"/aviary destination "+port.id()));
+            buttons.add(action((prefs.home().equals(port.id())?"⌂ ":prefs.favorites().contains(port.id())?"★ ":"")+port.name(),distance+" blocks"+(busyPort(port.id())?" · Busy":""), (manage?"/aviary destination ":"/aviary fly ")+port.id()));
         }
-        if(page>0)buttons.add(action("Previous","Previous destinations","/aviary page "+(page-1)));
-        if((page+1)*10<ports.size())buttons.add(action("Next","More destinations","/aviary page "+(page+1)));
-        buttons.add(action(prefs.quick()?"Travel: Quick":"Travel: Full","Choose a shorter presentation for repeat trips","/aviary travel "+(prefs.quick()?"full":"quick")));
-        buttons.add(action(prefs.freeCamera()?"Camera: Free":"Camera: Follow","Free uses your normal first-person or F5 camera","/aviary camera "+(prefs.freeCamera()?"follow":"free")));
-        if(store.perches.entrySet().stream().anyMatch(e->!e.getValue().active()&&store.ports.get(e.getKey()).owner().equals(p.getUUID().toString())))buttons.add(action("Packed perches","Replace a lost packed perch","/aviary packed"));
+        if(page>0)buttons.add(action("Previous","Previous destinations",(manage?"/aviary routes ":"/aviary page ")+(page-1)));
+        if((page+1)*10<ports.size())buttons.add(action("Next","More destinations",(manage?"/aviary routes ":"/aviary page ")+(page+1)));
+        buttons.add(action(manage?"Back":"Options",manage?"All destinations":"Travel preferences and destinations",manage?"/aviary":"/aviary options"));
         if(!loaded(p))buttons.add(action("Load resource pack","Models and sounds","/aviary pack"));
-        return dialog(p,"Destinations",ports.isEmpty()?"Place a perch or visit a public one to discover destinations.":origin==null?(store.network.fieldPickup()?"Find open ground under the sky to call your bird.":"Stand near a perch to depart."):"From "+origin.name(),buttons);
+        String body=ports.isEmpty()?"Place another perch or visit a public destination.":!prefs.introduced()?"Choose a destination, then use the saddle to board.":"";
+        if(!prefs.introduced())try{store.preferences(p.getUUID(),new AviaryStore.Preferences(prefs.favorites(),prefs.quick(),prefs.freeCamera(),prefs.discovered(),prefs.recent(),prefs.home(),true));}catch(Exception e){System.err.println("Aviary introduction could not be saved");}
+        return dialog(p,manage?"Manage destinations":"Where to?",body,buttons);
+    }
+    int options(ServerPlayer p){
+        if(store==null||!javaPlayer(p))return 0;
+        var prefs=store.preferences(p.getUUID());var buttons=new ArrayList<ActionButton>();
+        buttons.add(action(prefs.quick()?"Travel: Quick":"Travel: Full","Trip length","/aviary travel "+(prefs.quick()?"full":"quick")));
+        buttons.add(action(prefs.freeCamera()?"Camera: Free":"Camera: Follow","Camera mode","/aviary camera "+(prefs.freeCamera()?"follow":"free")));
+        buttons.add(action("Manage destinations","Home, favorites and companions","/aviary routes"));
+        if(store.perches.entrySet().stream().anyMatch(e->!e.getValue().active()&&store.ports.get(e.getKey()).owner().equals(p.getUUID().toString())))buttons.add(action("Packed perches","Move or recover a perch","/aviary packed"));
+        buttons.add(action("Back","All destinations","/aviary"));return dialog(p,"Options","",buttons);
+    }
+    void arrived(ServerPlayer p,String destination){
+        var old=store.preferences(p.getUUID());var recent=new ArrayList<>(old.recent());recent.remove(destination);recent.add(0,destination);
+        try{store.preferences(p.getUUID(),new AviaryStore.Preferences(old.favorites(),old.quick(),old.freeCamera(),old.discovered(),recent,old.home(),old.introduced()));}
+        catch(Exception e){System.err.println("Aviary recent destinations could not be saved");}
     }
     int destinationMenu(ServerPlayer p,String id){
         if(store==null||!javaPlayer(p))return 0;var port=store.ports.get(id);if(port==null||!visible(port,p))return menu(p);
@@ -193,24 +213,25 @@ public final class Aviary implements ModInitializer {
         var buttons=new ArrayList<ActionButton>();
         buttons.add(action(ready?(waiting?"Wait for a bird":"Call bird"):"Unavailable",ready?"Your bird will wait for you to board":"A destination and the resource pack are required",ready?"/aviary fly "+id:null));
         if(ready&&origin!=null&&store.settings.maxFlights()>=2)buttons.add(action("Fly with a friend","Invite a rider at this perch","/aviary friends "+id));
+        buttons.add(action(store.preferences(p.getUUID()).home().equals(id)?"Unset home":"Set as home","Keep home first","/aviary home "+id));
         buttons.add(action(store.preferences(p.getUUID()).favorites().contains(id)?"Unfavorite":"Favorite","Keep this destination at the top","/aviary favorite "+id));buttons.add(action("Back","All destinations","/aviary"));
         return dialog(p,port.name(),Math.round(p.position().distanceTo(Journey.position(port)))+" blocks · "+(waiting?"Waiting for a bird":!loaded.contains(p.getUUID())?"Resource pack required":origin==null?"Pickup in open ground":"From "+origin.name()),buttons);
     }
     int preference(ServerPlayer p,String kind,String value){
         if(store==null||!javaPlayer(p))return 0;var old=store.preferences(p.getUUID());var favorites=new HashSet<>(old.favorites());
         try {
-            boolean quick=old.quick(),free=old.freeCamera();
+            boolean quick=old.quick(),free=old.freeCamera();String home=old.home();
             if(kind.equals("favorite")){var port=store.ports.get(value);if(port==null||!visible(port,p))return 0;if(!favorites.remove(value))favorites.add(value);favorites.retainAll(store.ports.keySet());}
+            else if(kind.equals("home")){var port=store.ports.get(value);if(port==null||!visible(port,p))return 0;home=home.equals(value)?"":value;}
             else if(kind.equals("travel")){if(!Set.of("quick","full").contains(value))throw new IllegalArgumentException();quick=value.equals("quick");}
             else {if(!Set.of("free","follow").contains(value))throw new IllegalArgumentException();free=value.equals("free");}
-            store.preferences(p.getUUID(),new AviaryStore.Preferences(favorites,quick,free,old.discovered()));
-            return kind.equals("favorite")?destinationMenu(p,value):menu(p);
+            store.preferences(p.getUUID(),new AviaryStore.Preferences(favorites,quick,free,old.discovered(),old.recent(),home,old.introduced()));
+            return kind.equals("favorite")||kind.equals("home")?destinationMenu(p,value):options(p);
         }catch(Exception e){tell(p,"Could not save travel preferences.");return 0;}
     }
     int addPort(ServerPlayer p,String id,boolean shared) {
         if(store==null||journeys.containsKey(p.getUUID()))return 0;
         if(!javaPlayer(p)){tell(p,"Aviary requires Minecraft Java Edition.");return 0;}
-        if(!shared&&store.ports.values().stream().filter(q->q.owner().equals(p.getUUID().toString())).count()>=store.network.maxOwnedPerches()){tell(p,"You have reached your perch limit.");return 0;}
         if(store.ports.values().stream().anyMatch(q->q.dimension().equals(p.level().dimension().identifier().toString())&&p.position().distanceTo(Journey.position(q))<16)){tell(p,"Another aviport is too close. Leave at least 16 blocks between aviports.");return 0;}
         var port=new AviaryStore.Port(id,id.replace('_',' '),p.level().dimension().identifier().toString(),Math.floor(p.getX())+.5,p.getY(),Math.floor(p.getZ())+.5,p.getYRot(),p.getUUID().toString(),shared);
         try {AviaryStore.validate(port);if(store.ports.containsKey(id)||store.ports.size()>=128)throw new IllegalArgumentException("Port already exists or the port limit was reached.");String issue=Journey.portIssue(p.level(),port);if(!issue.isEmpty())throw new IllegalArgumentException(issue);store.ports.put(id,port);try{store.savePolicy();}catch(Exception e){store.ports.remove(id);throw e;}tell(p,"Aviport added: "+port.name());return 1;}
@@ -234,7 +255,7 @@ public final class Aviary implements ModInitializer {
     }
     int fly(ServerPlayer p,String id) {
         Long last=callTimes.get(p.getUUID());if(last!=null&&tick-last<40){tell(p,"Wait a moment before calling again.");return 0;}
-        callTimes.put(p.getUUID(),tick);return start(p,id,true);
+        callTimes.put(p.getUUID(),tick);diagnostics.called();return start(p,id,true);
     }
     private int start(ServerPlayer p,String id,boolean allowQueue) {
         try {
@@ -248,8 +269,8 @@ public final class Aviary implements ModInitializer {
             var origin=nearby(p);
             if(origin==null){
                 if(!store.network.fieldPickup())throw new IllegalStateException("Stand near a perch to depart.");
+                if(!p.onGround())throw new IllegalStateException("Land before calling your bird.");
                 origin=Journey.fieldOrigin(p);
-                if(origin==null)throw new IllegalStateException("Find open ground with room for your bird and sky above.");
             }
             if(origin.id().equals(id))throw new IllegalStateException("Choose another aviport.");
             if(journeys.size()>=store.settings.maxFlights()||busyPort(origin.id())||busyPort(id)){
@@ -258,8 +279,8 @@ public final class Aviary implements ModInitializer {
                 queue.put(p.getUUID(),new Call(id,p.position(),tick+1200));menu(p);return 1;
             }
             groups.cancel(p.getUUID());queue.remove(p.getUUID());journeys.put(p.getUUID(),new Journey(this,p,origin,destination));
-            tell(p,"Your bird is on its way. Use the saddle to board.");return 1;
-        }catch(Exception e){tell(p,e.getMessage()==null?"Could not start flight.":e.getMessage());return 0;}
+            p.sendOverlayMessage(Component.literal("Finding a landing spot…"));return 1;
+        }catch(Exception e){String message=e.getMessage()==null?"Could not start flight.":e.getMessage();diagnostics.failed(id,message);tell(p,message);return 0;}
     }
     private int cancel(ServerPlayer p){
         if(groups.pending(p)){groups.cancel(p.getUUID());return 1;}
@@ -279,8 +300,10 @@ public final class Aviary implements ModInitializer {
         perches.tick();
         if(tick%20==0)groups.tick();
         heldShift.replaceAll((id,ticks)->{if(ticks==7)skips.add(id);return Math.min(8,ticks+1);});
-        planningDeadline=System.nanoTime()+2_000_000L;
-        for(var j:List.copyOf(journeys.values()))try {if(skips.remove(j.player.getUUID()))j.skip=true;j.tick();}catch(Exception e){System.err.println("Oak Aviary flight failed: "+e);j.abort("Flight interrupted. Returning to a safe aviport.");}
+        long travelStarted=System.nanoTime();boolean activeTravel=!journeys.isEmpty();
+        planningDeadline=travelStarted+2_000_000L;
+        for(var j:List.copyOf(journeys.values()))try {if(skips.remove(j.player.getUUID()))j.skip=true;j.tick();}catch(Exception e){System.err.println("Oak Aviary flight failed: "+e);j.fail(e instanceof IllegalStateException?e.getMessage():"Flight interrupted. Returning to a safe perch.");}
+        if(activeTravel)diagnostics.tick(System.nanoTime()-travelStarted);
         if(tick%20==0)for(var p:server.getPlayerList().getPlayers()) {
             UUID id=p.getUUID();var recovery=store.recoveries.get(id);
             if(store.settings.enabled()&&javaPlayer(p)&&!journeys.containsKey(id)){

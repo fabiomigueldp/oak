@@ -23,13 +23,18 @@ print({key: state[key] for key in ('available', 'enabled', 'revision', 'error')}
 print('ports', len(state['ports']), 'flights', len(state['flights']))
 ```
 
-Read `network`, `waitingCalls` or individual ports only when needed. Avoid dumping
+Read `network`, `waitingCalls`, `diagnostics` or individual ports only when needed.
+Oak’s collapsed **Diagnóstico** shows session counters, preparation wall time,
+active journey-loop mean/maximum and the last 16 failures. Cancellations are not
+failures. Times cover server travel work, not client rendering or total server ticks.
+The removed `maxOwnedPerches` field is ignored when loading old settings and is
+no longer accepted in policy writes; deploy matching mod, Control and UI together. Avoid dumping
 player names, guests and coordinates for a routine health check. An inspection
 request is `{"action":"check","port":"<id>"}`; it returns current state with a
 timestamped landing check. It does not generate terrain or validate the full route.
 
 Use Oak's typed jobs for normal edits. `policy` requires the current `revision`,
-`fieldPickup`, `discoverPublic`, `maxOwnedPerches` (1–16); optional `maxFlights`
+`fieldPickup`, `discoverPublic`; optional `maxFlights`
 (1–4), `shortcutDistance` (100–500). `edit` requires `port`, `revision`, `name`,
 `shared`, `departureYaw`, `arrivalYaw` (null or −180…180); physical perches also
 accept `color`, `style`, `birdName`, `hub`. Exact types/fields:

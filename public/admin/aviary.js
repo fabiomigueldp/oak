@@ -5,7 +5,6 @@ const COLORS = { white:'Branco', orange:'Laranja', magenta:'Magenta', light_blue
 export function aviaryValues(data, id) {
   if (id === NETWORK) return data.network ? {
     fieldPickup: data.network.fieldPickup, discoverPublic: data.network.discoverPublic,
-    maxOwnedPerches: data.network.maxOwnedPerches,
     ...(Number.isFinite(data.shortcutDistance) ? { maxFlights:data.maxFlights, shortcutDistance:data.shortcutDistance } : {}),
   } : null;
   const p = data.ports.find(port => port.id === id);
@@ -51,6 +50,22 @@ export async function renderAviary(ctx) {
   sidebar.setAttribute('aria-label', 'Destinos');
   const editor = el('section', 'aviary-editor'); editor.setAttribute('aria-label', 'Configurações');
   layout.append(sidebar, editor); root.append(layout);
+  const diagnostics = el('details', 'aviary-details');
+  const evidence = el('div');
+  diagnostics.append(el('summary', '', 'Diagnóstico'), evidence); root.append(diagnostics);
+  function showDiagnostics() {
+    const d = data.diagnostics; diagnostics.hidden = !d;
+    if (!d || !diagnostics.open) return;
+    const number = value => Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits:2 });
+    evidence.replaceChildren(
+      el('p', '', `${d.calls} chamadas · ${d.completed} chegadas · ${d.failed} falhas`),
+      el('p', 'muted', 'Desde a última inicialização. Cancelamentos não contam como falhas.'),
+      el('p', '', `Preparação: ${number(d.meanPreparationMs / 1000)} s em média · máximo ${number(d.maxPreparationMs / 1000)} s`),
+      el('p', '', `Atualização das viagens no servidor: ${number(d.meanTickMs)} ms em média · máximo ${number(d.maxTickMs)} ms`),
+      el('ul', 'aviary-guests', ...(d.issues || []).slice().reverse().map(issue => el('li', '',
+        `${new Date(issue.at * 1000).toLocaleTimeString('pt-BR')} · ${data.ports.find(p => p.id === issue.destination)?.name || 'Chamada'} · ${issue.message}`))));
+  }
+  diagnostics.addEventListener('toggle', showDiagnostics);
   let selected = null, draft = null, revision = data.revision, baseline = '', pending = null, submitting = false;
   let listSignature = '', flightSignature = '';
   let syncForm = () => {};
@@ -59,6 +74,7 @@ export async function renderAviary(ctx) {
   const current = id => id === NETWORK ? data.network : data.ports.find(p => p.id === id);
   function report(message) { notice.textContent = message; notice.hidden = !message; }
   function list() {
+    showDiagnostics();
     const matches = data.ports.filter(p => `${p.name} ${p.id} ${p.ownerName || ''}`.toLocaleLowerCase('pt-BR').includes(query.value.toLocaleLowerCase('pt-BR')));
     const signature = JSON.stringify([selected, matches.map(p => [p.id,p.name,p.x,p.y,p.z,p.busy,p.shared,p.anchorStatus,p.kind,p.active])]);
     network.hidden = !data.network;
@@ -76,7 +92,7 @@ export async function renderAviary(ctx) {
       if (focused) [...ports.querySelectorAll('button')].find(b => b.dataset.port === focused)?.focus({ preventScroll:true });
     }
     live.textContent = data.error || (!data.enabled ? 'Viagens desativadas' : `${data.ports.length} destinos · ${data.flights.length} de ${data.maxFlights} aves em viagem${data.waitingCalls > 0 ? ` · ${data.waitingCalls} na fila` : ''}`);
-    const phases = { prepare:'Preparando', call:'Aproximação', greet:'Aguardando embarque', waiting:'Aguardando embarque', board:'Embarque', depart:'Decolagem', flight:'Voo', 'fade-out':'Partida', transfer:'Em trânsito', 'arrival-load':'Em trânsito', 'fade-in':'Aproximação', arrive:'Pouso', settle:'Desembarque', farewell:'Despedida' };
+    const phases = { prepare:'Preparando', call:'Aproximação', greet:'Aguardando embarque', waiting:'Aguardando embarque', wait:'Aguardando embarque', securing:'Preparando embarque', board:'Embarque', depart:'Decolagem', flight:'Voo', 'fade-out':'Partida', transfer:'Em trânsito', 'arrival-load':'Em trânsito', 'fade-in':'Aproximação', arrive:'Pouso', settle:'Desembarque', farewell:'Despedida' };
     const portName = id => data.ports.find(p => p.id === id)?.name || (String(id || '').startsWith('field') ? 'Chamada em campo' : id);
     const nextFlights = JSON.stringify(data.flights);
     if (nextFlights !== flightSignature) {
@@ -122,13 +138,7 @@ export async function renderAviary(ctx) {
     if (networkMode) {
       const discovery = bind(select({ visited:'Após visitar', all:'Visíveis para todos' }, draft.discoverPublic ? 'visited' : 'all'), 'discoverPublic', 'change', value => value === 'visited');
       const pickup = bind(select({ enabled:'Permitidas', disabled:'Desativadas' }, draft.fieldPickup ? 'enabled' : 'disabled'), 'fieldPickup', 'change', value => value === 'enabled');
-      const limit = input(draft.maxOwnedPerches, 'number'); Object.assign(limit, { min:1, max:16, step:1, required:true });
-      bind(limit, 'maxOwnedPerches', 'input', Number);
-      form.append(el('div', 'aviary-fields', field('Destinos públicos', discovery), field('Poleiros por jogador', limit)),
-        el('p', 'muted', 'Destinos privados exigem convite. Pontos públicos principais ficam disponíveis sem visita.'),
-        field('Chamadas em campo aberto', pickup),
-        el('p', 'muted', 'Permite chamar uma ave pelo apito fora de um poleiro. O embarque exige terreno seguro; o destino continua sendo um poleiro.'),
-        el('p', 'muted', 'Novos limites valem para a criação de poleiros. Destinos existentes são preservados.'));
+      form.append(el('div', 'aviary-fields', field('Destinos públicos', discovery), field('Chamadas em campo aberto', pickup)));
       if (Number.isFinite(draft.shortcutDistance)) {
         const limits = el('details', 'aviary-details');
         const flightsLimit = input(draft.maxFlights, 'number'); Object.assign(flightsLimit, { min:1, max:4, step:1, required:true });

@@ -4,7 +4,7 @@ import { aviaryValues, aviaryAnchorLabel, aviaryEditState } from '../public/admi
 
 function fixture() {
   return { revision:12, error:'', maxFlights:2, shortcutDistance:500,
-    network:{ fieldPickup:true, discoverPublic:true, maxOwnedPerches:4 },
+    network:{ fieldPickup:true, discoverPublic:true },
     ports:[{ id:'home', name:'Home', shared:false, departureYaw:null, arrivalYaw:90, busy:false, kind:'perch', anchorStatus:'active',
       owner:'player-id', perch:{ x:10, y:80, z:20, active:true, color:'green', style:'oak', birdName:'Fern', hub:false, guests:['friend-id'] } },
     { id:'legacy', name:'Harbor', shared:true, arrivalYaw:null, kind:'legacy' }], flights:[] };
@@ -22,9 +22,11 @@ test('physical and legacy edits send configuration without anchor or invitation 
 
 test('network drafts copy current settings and tolerate the previous socket schema', () => {
   const data = fixture();
-  assert.deepEqual(aviaryValues(data, '@network'), { fieldPickup:true, discoverPublic:true, maxOwnedPerches:4, maxFlights:2, shortcutDistance:500 });
+  assert.deepEqual(aviaryValues(data, '@network'), { fieldPickup:true, discoverPublic:true, maxFlights:2, shortcutDistance:500 });
   delete data.shortcutDistance;
   assert.equal(Object.hasOwn(aviaryValues(data, '@network'), 'maxFlights'), false);
+  data.network.maxOwnedPerches = 4;
+  assert.equal(Object.hasOwn(aviaryValues(data, '@network'), 'maxOwnedPerches'), false);
   delete data.network;
   assert.equal(aviaryValues(data, '@network'), null);
 });

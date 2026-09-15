@@ -49,7 +49,16 @@ final class PerchRegression {
             try(var reloaded=new AviaryStore()){
                 if(!reloaded.error.isEmpty()||reloaded.perches.get("support_a").active()||reloaded.perches.get("support_b").active())throw new AssertionError("Damaged perch state was not durable");
             }
-            System.out.println("AVIARY_SMOKE support hazards, batch rollback and durable recovery passed");
+            app.store.ports.clear();app.store.perches.clear();
+            for(int i=0;i<5;i++)app.store.ports.put("owned_"+i,new AviaryStore.Port("owned_"+i,"Owned","minecraft:overworld",1000+i*20,80,0,0,player.getUUID().toString(),false));
+            var floor=new java.util.HashMap<BlockPos,net.minecraft.world.level.block.state.BlockState>();
+            try {
+                for(int x=18;x<=22;x++)for(int z=18;z<=22;z++){var pos=new BlockPos(x,79,z);floor.put(pos,level.getBlockState(pos));level.setBlock(pos,Blocks.STONE.defaultBlockState(),3);}
+                var place=Perches.class.getDeclaredMethod("place",ServerPlayer.class,ItemStack.class,net.minecraft.world.phys.BlockHitResult.class);place.setAccessible(true);
+                var hit=new net.minecraft.world.phys.BlockHitResult(net.minecraft.world.phys.Vec3.atCenterOf(a),net.minecraft.core.Direction.UP,a,false);
+                if(!(boolean)place.invoke(lifecycle,player,Perches.item("perch",null),hit)||app.store.ports.size()!=6)throw new AssertionError("Sixth owned perch was rejected");
+            } finally {floor.forEach((pos,state)->level.setBlock(pos,state,3));}
+            System.out.println("AVIARY_SMOKE support recovery and placement beyond former owner quota passed");
         }finally{
             lifecycle.close();app.store.error=error;app.store.ports.clear();app.store.ports.putAll(ports);app.store.perches.clear();app.store.perches.putAll(perches);
             level.setBlock(a,blockA,3);level.setBlock(b,blockB,3);app.store.savePolicy();

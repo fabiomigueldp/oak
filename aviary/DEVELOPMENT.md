@@ -15,9 +15,9 @@ rather than scanning every source file or generated asset. Paths beginning with
 | Items, placement, scenery, support lifecycle | `Perches.java`, `PerchMenus.java`, `mixin/IngredientGuard.java` |
 | Companion invitations and coordination | `GroupFlights.java` |
 | Boarding, travel phases, camera, transfer, cleanup | `Journey.java`, `PassengerVisual.java` |
-| Paths, incremental planning, clearance | `FlightScene.java`, `FlightPath.java`, `FlightPlanner.java`, `FlightSpace.java` |
+| Paths, incremental planning, clearance | `LandingSearch.java`, `FlightPlanner.java`, `FlightSpace.java`, `FlightScene.java`, `FlightPath.java` |
 | Rig, acting and sound | `BirdRig.java`, `BirdMotion.java`, `BirdTraits.java`, `FlightMotor.java`, `FlightSound.java` |
-| Oak transport and input validation | `AviaryControl.java`, `../admin/aviary.py` |
+| Oak transport and input validation | `AviaryControl.java`, `TravelDiagnostics.java`, `../admin/aviary.py` |
 | Oak state, jobs and UI | `../admin/runtime.py`, `../admin/domain.py`, `../public/admin/aviary.js`, `../public/admin/aviary.css` |
 
 ## State and ownership
@@ -25,7 +25,10 @@ rather than scanning every source file or generated asset. Paths beginning with
 `AviaryStore` keeps destination addresses separate from physical `PerchData`.
 Preserve the legacy Port record and old preference/settings decoding. Anchors
 store support coordinates, appearance, guests and active/hub flags; player
-preferences store favorites, discovery and travel/camera choices. Runtime files
+preferences store favorites, discovery, home, five recent arrivals, first-use
+guidance and travel/camera choices. Legacy preferences default missing fields;
+legacy `network.maxOwnedPerches` is ignored. There is no per-player quota. The
+128-address global storage bound and simultaneous-flight budget remain. Runtime files
 live outside Git; see Operations for paths.
 
 Custom items use vanilla `DISC_FRAGMENT_5`, native components and server recipes.
@@ -52,6 +55,16 @@ every exit. Disconnect recovery chooses a safe registered landing; if none exist
 disconnect with an explanation rather than dropping the player into danger.
 Preserve journals until recovery completes. Port reservations include the bird's
 farewell; companion trips coordinate departure and landing separately.
+
+`LandingSearch` checks loaded nearby ground at radii 2/3/5/8/12, sixteen angles
+and five heights, with duplicate positions skipped. It shares the planner deadline.
+A field call starts with a provisional origin; rejected perch geometry or approach
+can retry up to eight nearby alternatives per endpoint. Preparation expires after
+40 seconds. Chosen coordinates are journey-local: address identity, access and
+reservations survive, and recovery journals contain the actual landing coordinates.
+The owner-only boarding marker uses eight particles at 2 Hz and disappears when
+boarding/cancelling without persistent marker entities. Search never edits terrain
+or generates chunks; accepted endpoints use the existing bounded ticket lifecycle.
 
 `FlightPlanner` yields across ticks. The journey loop shares a cooperative 2 ms
 planning deadline, not a hard runtime guarantee. No background thread reads the
@@ -101,7 +114,10 @@ executor. `admin/aviary.py` strictly validates portal inputs. Writes use the
 authenticated `aviary_edit` job and current revision; busy destinations reject
 edits. Keep drafts separate from observed state and refresh after a successful job.
 Inspection carries a timestamp/revision and does not promise a clear full route.
-Owner/guest management remains in-game. See Operations for ranges and live reads.
+Owner/guest management remains in-game. Runtime-only `diagnostics` records calls,
+arrivals, failures, preparation wall time and active journey-loop time. The last
+16 failure reasons contain no player IDs. These values exclude client frame/memory
+cost and do not measure whole-server tick time. See Operations for live reads.
 
 ## Verification
 

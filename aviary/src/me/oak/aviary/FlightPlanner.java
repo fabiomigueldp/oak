@@ -5,6 +5,10 @@ import net.minecraft.world.phys.Vec3;
 
 /** Bounded candidate search spread across server ticks, with no asynchronous world access. */
 final class FlightPlanner {
+    static final class Blocked extends IllegalStateException {
+        final boolean arrival;
+        Blocked(boolean arrival,String name){super(name+": no clear approach. Clear space beside or above the perch.");this.arrival=arrival;}
+    }
     private static final float[] ANGLES={0,45,-45,90,-90,135,-135,180};
     private final ServerLevel level;
     private final AviaryStore.Port origin,destination;
@@ -26,7 +30,7 @@ final class FlightPlanner {
                 if(index>=(stage==0?3:17)){
                     if(stage==0){stage++;index=0;continue;}
                     var port=stage==2?destination:origin;
-                    throw new IllegalStateException("Clear an approach above or beside "+port.name()+".");
+                    throw new Blocked(stage==2,port.name());
                 }
                 candidate=candidate();
                 check=new FlightSpace.Check(level,candidate,stage==0?"flight":stage==1?"depart":stage==2?"arrive":"call");

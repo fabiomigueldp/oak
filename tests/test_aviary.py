@@ -16,7 +16,7 @@ class AviaryTests(unittest.TestCase):
 
     def policy(self, **changes):
         return {'action': 'policy', 'revision': 0, 'fieldPickup': True, 'discoverPublic': True,
-                'maxOwnedPerches': 4, **changes}
+                **changes}
 
     def test_edits_cannot_change_coordinates_or_execute_commands(self):
         for change in ({'x': 100}, {'command': 'stop'}, {'action': 'delete'}, {'shared': 1}, {'name': 'A\nB'}, {'revision': True}, {'port': '../settings'}, {'arrivalYaw': float('nan')}, {'departureYaw': 181}, {'arrivalYaw': True}):
@@ -78,11 +78,11 @@ class AviaryTests(unittest.TestCase):
         demo.aviary_state['ports'][0]['busy'] = True
         original = demo.call('aviary')
         job = {'job': str(uuid.uuid4()), 'kind': 'aviary_edit', 'params': self.policy(
-            fieldPickup=False, discoverPublic=False, maxOwnedPerches=1, maxFlights=1, shortcutDistance=250)}
+            fieldPickup=False, discoverPublic=False, maxFlights=1, shortcutDistance=250)}
         result = demo.call('execute', job)
         self.assertEqual(result['ports'], original['ports'])
         self.assertEqual(result['flights'], original['flights'])
-        self.assertEqual(result['network'], {'fieldPickup': False, 'discoverPublic': False, 'maxOwnedPerches': 1})
+        self.assertEqual(result['network'], {'fieldPickup': False, 'discoverPublic': False})
         self.assertEqual((result['maxFlights'], result['shortcutDistance']), (1, 250))
         self.assertEqual(demo.call('execute', job)['revision'], 1)
         with self.assertRaises(ValueError):

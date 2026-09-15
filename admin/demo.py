@@ -20,7 +20,7 @@ class DemoAgent:
         self.last_save = self.started - 600
         self.receipts = {}
         self.aviary_state = {'available': True, 'enabled': True, 'revision': 0, 'error': '', 'maxFlights': 2, 'shortcutDistance': 500, 'flights': [],
-            'network': {'fieldPickup': True, 'discoverPublic': True, 'maxOwnedPerches': 4},
+            'network': {'fieldPickup': True, 'discoverPublic': True},
             'ports': [{'id': ident, 'name': name, 'dimension': 'minecraft:overworld', 'x': x, 'y': 80, 'z': z, 'yaw': 0,
                        'owner': '00000000-0000-0000-0000-000000000001', 'shared': True, 'busy': False, 'departureYaw': None, 'arrivalYaw': None}
                       for ident, name, x, z in [('harbor', 'Harbor', 16, 56), ('ridge', 'Ridge', -96, 184)]]}
@@ -137,7 +137,7 @@ class DemoAgent:
                 if params['revision'] != self.aviary_state['revision']:
                     raise ValueError('Aviports changed. Refresh before saving.')
                 if params['action'] == 'policy':
-                    self.aviary_state['network'] = {k: params[k] for k in ('fieldPickup', 'discoverPublic', 'maxOwnedPerches')}
+                    self.aviary_state['network'] = {k: params[k] for k in ('fieldPickup', 'discoverPublic')}
                     self.aviary_state.update({k: params[k] for k in ('maxFlights', 'shortcutDistance') if k in params})
                 else:
                     port = next((p for p in self.aviary_state['ports'] if p['id'] == params['port']), None)
