@@ -4,6 +4,7 @@ Server-side condor transport using crafted **Perch** and **Whistle** items,
 native Minecraft menus and a server-delivered resource pack. Java players use
 an unmodified client. Pack acceptance is required for travel, not for joining.
 Bedrock login remains available; Aviary interactions are Java-only.
+The whistle also calls a companion for following, waiting and manual flight.
 
 ## Read by task
 
@@ -13,7 +14,7 @@ release note or model file by default.
 
 | Task | Read | Covers |
 | --- | --- | --- |
-| Use or explain the feature | [Gameplay](GAMEPLAY.md) | Recipes, boarding, access, moving, friends, commands |
+| Use or explain the feature | [Gameplay](GAMEPLAY.md) | Items, routes, free flight, companion controls, commands |
 | Change behavior, art or Oak UI | [Development](DEVELOPMENT.md) | Source map, state, flight lifecycle, rendering, contracts, checks |
 | Inspect, diagnose, deploy or recover | [Operations](OPERATIONS.md) | Live state, socket requests, releases, rollback, crash triage |
 

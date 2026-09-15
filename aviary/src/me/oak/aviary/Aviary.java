@@ -29,6 +29,8 @@ public final class Aviary implements ModInitializer {
     MinecraftServer server;
     AviaryStore store;
     Perches perches;
+    final Companions companions=new Companions(this);
+    int activeFlights(){return journeys.size()+companions.mountedCount();}
     private PerchMenus perchMenus;
     private GroupFlights groups;
     final Map<UUID,Journey> journeys=new LinkedHashMap<>();
@@ -62,21 +64,28 @@ public final class Aviary implements ModInitializer {
             }
             return net.minecraft.world.InteractionResult.PASS;
         });
-        ServerLifecycleEvents.SERVER_STOPPING.register(s->{queue.clear();for(var j:List.copyOf(journeys.values()))j.abort("Travel stopped. The server is restarting.");perches.close();if(store!=null)store.close();});
+        ServerLifecycleEvents.SERVER_STOPPING.register(s->{queue.clear();companions.stop();for(var j:List.copyOf(journeys.values()))j.abort("Travel stopped. The server is restarting.");perches.close();if(store!=null)store.close();});
         ServerPlayConnectionEvents.JOIN.register((handler,sender,s)->{
             if(store!=null&&store.recoveries.containsKey(handler.player.getUUID()))protectedPlayers.add(handler.player.getUUID());
             var vehicle=handler.player.getRootVehicle();
             if(vehicle!=handler.player&&vehicle.entityTags().contains("oak_aviary_temporary")){handler.player.stopRiding();vehicle.discard();}
             restoreCamera(handler.player);sendPack(handler.player);perches.joined(handler.player);
         });
-        ServerPlayConnectionEvents.DISCONNECT.register((handler,s)->{UUID id=handler.player.getUUID();Journey j=journeys.get(id);if(j!=null)j.abort("Travel interrupted.");queue.remove(id);groups.cancel(id);callTimes.remove(id);perchMenus.forget(id);loaded.remove(id);skips.remove(id);heldShift.remove(id);if(store!=null)store.forget(id);});
+        ServerPlayConnectionEvents.DISCONNECT.register((handler,s)->{UUID id=handler.player.getUUID();companions.disconnect(id);Journey j=journeys.get(id);if(j!=null)j.abort("Travel interrupted.");queue.remove(id);groups.cancel(id);callTimes.remove(id);perchMenus.forget(id);loaded.remove(id);skips.remove(id);heldShift.remove(id);if(store!=null)store.forget(id);});
         ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity,source,amount)->{
-            UUID id=entity.getUUID();if(isTravelling(id))return false;
-            if(amount>0){queue.remove(id);groups.cancel(id);Journey j=journeys.get(id);if(j!=null&&j.waiting())j.abort("Your bird left. Call again when you are safe.");}
+            UUID id=entity.getUUID();
+            if(companions.mounted(id)){
+                if(source.is(net.minecraft.world.damagesource.DamageTypes.FALL))return false;
+                if(amount>0)companions.hurt(id);return true;
+            }
+            if(isTravelling(id))return false;
+            if(amount>0){companions.hurt(id);queue.remove(id);groups.cancel(id);Journey j=journeys.get(id);if(j!=null&&j.waiting())j.abort("Your bird left. Call again when you are safe.");}
             return true;
         });
         CommandRegistrationCallback.EVENT.register((dispatcher,access,environment)->dispatcher.register(Commands.literal("aviary")
             .executes(c->menu(c.getSource().getPlayerOrException()))
+            .then(Commands.literal("roam").executes(c->companions.command(c.getSource().getPlayerOrException(),"call")))
+            .then(Commands.literal("bird").executes(c->companions.menu(c.getSource().getPlayerOrException())).then(Commands.argument("action",StringArgumentType.word()).executes(c->companions.command(c.getSource().getPlayerOrException(),StringArgumentType.getString(c,"action")))))
             .then(Commands.literal("options").executes(c->options(c.getSource().getPlayerOrException())))
             .then(Commands.literal("routes").executes(c->menu(c.getSource().getPlayerOrException(),0,true)).then(Commands.argument("page",com.mojang.brigadier.arguments.IntegerArgumentType.integer(0,12)).executes(c->menu(c.getSource().getPlayerOrException(),com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(c,"page"),true))))
             .then(Commands.literal("home").then(Commands.argument("port",StringArgumentType.word()).executes(c->preference(c.getSource().getPlayerOrException(),"home",StringArgumentType.getString(c,"port")))))
@@ -112,7 +121,8 @@ public final class Aviary implements ModInitializer {
     }
     static void tell(ServerPlayer p,String message){p.sendSystemMessage(Component.literal(message));}
     public static boolean isTravelling(UUID id){return instance!=null&&instance.protectedPlayers.contains(id);}
-    public static void requestSkip(UUID id){if(isTravelling(id))instance.skips.add(id);}
+    public static void requestSkip(UUID id){if(isTravelling(id)){if(instance.companions.mounted(id))instance.companions.land(id);else instance.skips.add(id);}}
+    public static void flightInput(UUID id,net.minecraft.world.entity.player.Input input){if(instance==null)return;instance.companions.input(id,input);if(!instance.companions.mounted(id))shiftInput(id,input.shift());}
     public static void shiftInput(UUID id,boolean pressed){if(!isTravelling(id))return;if(pressed)instance.heldShift.putIfAbsent(id,0);else instance.heldShift.remove(id);}
     public static void packResponse(UUID id,ServerboundResourcePackPacket packet) {
         Aviary a=instance;if(a==null||!packet.id().equals(a.packId))return;
@@ -167,6 +177,7 @@ public final class Aviary implements ModInitializer {
     int menu(ServerPlayer p,int page,boolean manage) {
         if(store==null)return 0;
         if(!javaPlayer(p)){tell(p,"Aviary requires Minecraft Java Edition.");return 0;}
+        if(companions.mounted(p.getUUID()))return companions.menu(p);
         var active=journeys.get(p.getUUID());
         if(active!=null&&!active.waiting()&&!isTravelling(p.getUUID())){p.sendOverlayMessage(Component.literal("Your bird is leaving the perch."));return 1;}
         if(active!=null)return dialog(p,"Your bird",active.waiting()?"Use the saddle when your bird is ready.":"Your flight is in progress.",List.of(action(active.waiting()?"Cancel":"Skip",active.waiting()?"Dismiss your bird":"Finish the flight",active.waiting()?"/aviary cancel":"/aviary skip")));
@@ -185,9 +196,10 @@ public final class Aviary implements ModInitializer {
         }
         if(page>0)buttons.add(action("Previous","Previous destinations",(manage?"/aviary routes ":"/aviary page ")+(page-1)));
         if((page+1)*10<ports.size())buttons.add(action("Next","More destinations",(manage?"/aviary routes ":"/aviary page ")+(page+1)));
+        if(!manage){buttons.add(action("Free flight","Call your bird and take the reins","/aviary roam"));buttons.add(action("Companion","Follow, stay or return","/aviary bird"));}
         buttons.add(action(manage?"Back":"Options",manage?"All destinations":"Travel preferences and destinations",manage?"/aviary":"/aviary options"));
         if(!loaded(p))buttons.add(action("Load resource pack","Models and sounds","/aviary pack"));
-        String body=ports.isEmpty()?"Place another perch or visit a public destination.":!prefs.introduced()?"Choose a destination, then use the saddle to board.":"";
+        String body=ports.isEmpty()?(manage?"Place a perch to save a destination.":"Choose Free flight to explore without a destination."):!prefs.introduced()?"Choose a flight, then use the saddle to board.":"";
         if(!prefs.introduced())try{store.preferences(p.getUUID(),new AviaryStore.Preferences(prefs.favorites(),prefs.quick(),prefs.freeCamera(),prefs.discovered(),prefs.recent(),prefs.home(),true));}catch(Exception e){System.err.println("Aviary introduction could not be saved");}
         return dialog(p,manage?"Manage destinations":"Where to?",body,buttons);
     }
@@ -195,8 +207,8 @@ public final class Aviary implements ModInitializer {
         if(store==null||!javaPlayer(p))return 0;
         var prefs=store.preferences(p.getUUID());var buttons=new ArrayList<ActionButton>();
         buttons.add(action(prefs.quick()?"Travel: Quick":"Travel: Full","Trip length","/aviary travel "+(prefs.quick()?"full":"quick")));
-        buttons.add(action(prefs.freeCamera()?"Camera: Free":"Camera: Follow","Camera mode","/aviary camera "+(prefs.freeCamera()?"follow":"free")));
-        buttons.add(action("Manage destinations","Home, favorites and companions","/aviary routes"));
+        buttons.add(action(prefs.freeCamera()?"Camera: Free":"Camera: Follow","Automatic route camera","/aviary camera "+(prefs.freeCamera()?"follow":"free")));
+        buttons.add(action("Manage destinations","Home, favorites and friends","/aviary routes"));
         if(store.perches.entrySet().stream().anyMatch(e->!e.getValue().active()&&store.ports.get(e.getKey()).owner().equals(p.getUUID().toString())))buttons.add(action("Packed perches","Move or recover a perch","/aviary packed"));
         buttons.add(action("Back","All destinations","/aviary"));return dialog(p,"Options","",buttons);
     }
@@ -209,7 +221,7 @@ public final class Aviary implements ModInitializer {
         if(store==null||!javaPlayer(p))return 0;var port=store.ports.get(id);if(port==null||!visible(port,p))return menu(p);
         var origin=nearby(p);boolean busy=busyPort(id)||(origin!=null&&busyPort(origin.id()));
         boolean ready=(origin!=null||store.network.fieldPickup())&&(origin==null||!origin.id().equals(id))&&store.settings.enabled()&&store.error.isEmpty()&&loaded.contains(p.getUUID());
-        boolean waiting=busy||journeys.size()>=store.settings.maxFlights();
+        boolean waiting=busy||activeFlights()>=store.settings.maxFlights();
         var buttons=new ArrayList<ActionButton>();
         buttons.add(action(ready?(waiting?"Wait for a bird":"Call bird"):"Unavailable",ready?"Your bird will wait for you to board":"A destination and the resource pack are required",ready?"/aviary fly "+id:null));
         if(ready&&origin!=null&&store.settings.maxFlights()>=2)buttons.add(action("Fly with a friend","Invite a rider at this perch","/aviary friends "+id));
@@ -273,12 +285,12 @@ public final class Aviary implements ModInitializer {
                 origin=Journey.fieldOrigin(p);
             }
             if(origin.id().equals(id))throw new IllegalStateException("Choose another aviport.");
-            if(journeys.size()>=store.settings.maxFlights()||busyPort(origin.id())||busyPort(id)){
+            if(activeFlights()>=store.settings.maxFlights()||busyPort(origin.id())||busyPort(id)){
                 if(!allowQueue)return 0;
                 if(queue.size()>=16&&!queue.containsKey(p.getUUID()))throw new IllegalStateException("The waiting list is full. Try again shortly.");
                 queue.put(p.getUUID(),new Call(id,p.position(),tick+1200));menu(p);return 1;
             }
-            groups.cancel(p.getUUID());queue.remove(p.getUUID());journeys.put(p.getUUID(),new Journey(this,p,origin,destination));
+            groups.cancel(p.getUUID());queue.remove(p.getUUID());companions.suspend(p.getUUID());journeys.put(p.getUUID(),new Journey(this,p,origin,destination));
             p.sendOverlayMessage(Component.literal("Finding a landing spot…"));return 1;
         }catch(Exception e){String message=e.getMessage()==null?"Could not start flight.":e.getMessage();diagnostics.failed(id,message);tell(p,message);return 0;}
     }
@@ -300,16 +312,17 @@ public final class Aviary implements ModInitializer {
         perches.tick();
         if(tick%20==0)groups.tick();
         heldShift.replaceAll((id,ticks)->{if(ticks==7)skips.add(id);return Math.min(8,ticks+1);});
-        long travelStarted=System.nanoTime();boolean activeTravel=!journeys.isEmpty();
+        long travelStarted=System.nanoTime();boolean activeTravel=!journeys.isEmpty()||companions.active();
         planningDeadline=travelStarted+2_000_000L;
         for(var j:List.copyOf(journeys.values()))try {if(skips.remove(j.player.getUUID()))j.skip=true;j.tick();}catch(Exception e){System.err.println("Oak Aviary flight failed: "+e);j.fail(e instanceof IllegalStateException?e.getMessage():"Flight interrupted. Returning to a safe perch.");}
+        companions.tick();
         if(activeTravel)diagnostics.tick(System.nanoTime()-travelStarted);
         if(tick%20==0)for(var p:server.getPlayerList().getPlayers()) {
             UUID id=p.getUUID();var recovery=store.recoveries.get(id);
             if(store.settings.enabled()&&javaPlayer(p)&&!journeys.containsKey(id)){
                 var nearest=nearby(p);if(nearest!=null)discover(p,nearest);
             }
-            if(recovery!=null&&!journeys.containsKey(id)&&recovering.add(id)) {
+            if(recovery!=null&&!journeys.containsKey(id)&&!companions.active(id)&&recovering.add(id)) {
                 protectedPlayers.add(id);
                 // Recovery is local to registered overworld ports; no inventory or game-mode state is changed.
                 var level=server.overworld();double x=recovery.transferred()?recovery.dx():recovery.x(), y=recovery.transferred()?recovery.dy():recovery.y(),z=recovery.transferred()?recovery.dz():recovery.z();
@@ -326,7 +339,7 @@ public final class Aviary implements ModInitializer {
             if(tick>=call.expires()||p.level()!=server.overworld()||p.position().distanceTo(call.position())>6||!p.isAlive()){
                 queue.remove(entry.getKey());tell(p,"Call cancelled. Use your whistle when you are ready.");continue;
             }
-            if(journeys.size()>=store.settings.maxFlights()||busyPort(call.destination()))continue;
+            if(activeFlights()>=store.settings.maxFlights()||busyPort(call.destination()))continue;
             var origin=nearby(p);if(origin!=null&&busyPort(origin.id()))continue;
             queue.remove(entry.getKey());start(p,call.destination(),false);
         }

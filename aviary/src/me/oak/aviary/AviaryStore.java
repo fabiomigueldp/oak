@@ -25,6 +25,22 @@ public final class AviaryStore implements AutoCloseable {
     public record NetworkPolicy(boolean fieldPickup,boolean discoverPublic) {}
     public static final Set<String> COLORS=Set.of("white","orange","magenta","light_blue","yellow","lime","pink","gray","light_gray","cyan","purple","blue","brown","green","red","black");
     public static final Set<String> STYLES=Set.of("oak","spruce","birch");
+    public record Companion(String mode,double x,double y,double z,float yaw) {}
+    private final Map<UUID,Companion> companions=new HashMap<>();
+    public Companion companion(UUID id){
+        return companions.computeIfAbsent(id,key->{
+            try {var path=root.resolve("companions").resolve(key+".json");if(Files.exists(path)){var value=GSON.fromJson(read(path),Companion.class);validateCompanion(value);return value;}}
+            catch(Exception e){System.err.println("Aviary companion unavailable; automatic recall disabled");}
+            return new Companion("off",0,80,0,0);
+        });
+    }
+    public void companion(UUID id,Companion value)throws Exception{
+        validateCompanion(value);Files.createDirectories(root.resolve("companions"));atomic(root.resolve("companions").resolve(id+".json"),GSON.toJson(value));companions.put(id,value);
+    }
+    private static void validateCompanion(Companion value){
+        if(value==null||!Set.of("off","follow","stay").contains(value.mode()))throw new IllegalArgumentException("Invalid companion mode");
+        validate(new Port("companion","Companion","minecraft:overworld",value.x(),value.y(),value.z(),value.yaw(),"00000000-0000-0000-0000-000000000000",false));
+    }
     public record Recovery(String player,String originDimension,double x,double y,double z,float yaw,
                            String destinationDimension,double dx,double dy,double dz,float dyaw,boolean transferred) {}
     public record Settings(boolean enabled,String packUrl,String packSha1,double shortcutDistance,int maxFlights) {}
@@ -59,7 +75,7 @@ public final class AviaryStore implements AutoCloseable {
         atomic(root.resolve("players").resolve(player+".json"),GSON.toJson(value));
         preferences.put(player,value);
     }
-    void forget(UUID player){preferences.remove(player);}
+    void forget(UUID player){preferences.remove(player);companions.remove(player);}
 
     public AviaryStore() {
         try {

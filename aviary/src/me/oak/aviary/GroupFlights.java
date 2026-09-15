@@ -31,7 +31,7 @@ final class GroupFlights {
             var origin=app.nearby(leader);var destination=app.store.ports.get(id);var friend=app.server.getPlayerList().getPlayer(UUID.fromString(friendId));
             if(origin==null||destination==null||friend==null||friend==leader||origin.id().equals(id)||!Aviary.visible(destination,leader)||!eligible(leader,origin,destination)||!eligible(friend,origin,destination))throw new IllegalArgumentException("Both riders must stand at this perch and have access to the destination.");
             if(app.store.settings.maxFlights()<2)throw new IllegalArgumentException("Friend trips need at least two available birds.");
-            if(app.busyPort(origin.id())||app.busyPort(id)||app.journeys.size()+2>app.store.settings.maxFlights())throw new IllegalArgumentException("Wait until two birds and both perches are available.");
+            if(app.busyPort(origin.id())||app.busyPort(id)||app.activeFlights()+2>app.store.settings.maxFlights())throw new IllegalArgumentException("Wait until two birds and both perches are available.");
             if(pending(leader.getUUID())!=null||pending(friend.getUUID())!=null)throw new IllegalArgumentException("Finish or cancel the current invitation first.");
             if(invitations.size()>=16)throw new IllegalArgumentException("Try again shortly.");
             var invitation=new Invitation(UUID.randomUUID(),leader.getUUID(),friend.getUUID(),origin.id(),id,System.nanoTime()+60_000_000_000L);invitations.put(invitation.token(),invitation);
@@ -57,7 +57,7 @@ final class GroupFlights {
             if(origin==null||destination==null||!eligible(leader,origin,destination)||!eligible(friend,origin,destination)||!Aviary.visible(destination,leader))throw new IllegalArgumentException("Both riders must stay near the perch and have access to the destination.");
             var anchor=app.store.perches.get(origin.id());var target=app.store.perches.get(destination.id());
             if((anchor!=null&&!anchor.active())||(target!=null&&!target.active()))throw new IllegalArgumentException("A perch was moved. Call again after it is placed.");
-            if(app.journeys.size()+2>app.store.settings.maxFlights()||app.busyPort(origin.id())||app.busyPort(destination.id()))throw new IllegalArgumentException("The route is busy. Invite your friend again when two birds are available.");
+            if(app.activeFlights()+2>app.store.settings.maxFlights()||app.busyPort(origin.id())||app.busyPort(destination.id()))throw new IllegalArgumentException("The route is busy. Invite your friend again when two birds are available.");
             boolean quick=app.store.preferences(leader.getUUID()).quick();String group=invitation.token().toString();
             app.diagnostics.called();app.diagnostics.called();
             Journey first=new Journey(app,leader,origin,destination,group,quick);app.journeys.put(leader.getUUID(),first);

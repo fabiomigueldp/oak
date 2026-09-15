@@ -13,7 +13,8 @@ rather than scanning every source file or generated asset. Paths beginning with
 | Login, commands, access, queues, shared tick budget | `Aviary.java` |
 | Durable policy, anchors, preferences, recovery | `AviaryStore.java` |
 | Items, placement, scenery, support lifecycle | `Perches.java`, `PerchMenus.java`, `mixin/IngredientGuard.java` |
-| Companion invitations and coordination | `GroupFlights.java` |
+| Friend invitations and coordination | `GroupFlights.java` |
+| Free flight and companion lifecycle | `Companions.java`, `RoamingBird.java`, `SteeringMotor.java`, `RoamingTickets.java`, `AirLandingSearch.java`, `mixin/GameListener.java` |
 | Boarding, travel phases, camera, transfer, cleanup | `Journey.java`, `PassengerVisual.java` |
 | Paths, incremental planning, clearance | `LandingSearch.java`, `FlightPlanner.java`, `FlightSpace.java`, `FlightScene.java`, `FlightPath.java` |
 | Rig, acting and sound | `BirdRig.java`, `BirdMotion.java`, `BirdTraits.java`, `FlightMotor.java`, `FlightSound.java` |
@@ -73,11 +74,42 @@ and actual movement check swept bounds, fluids, border and chunk availability.
 Resting geometry is cached, terrain results are not. Chunk tickets are bounded
 and reference-counted. Never load an entire long-distance corridor.
 
+## Free flight and companion lifecycle
+
+One `RoamingBird` retains its rig through call, wait, mount, flight and landing.
+`Companions` owns sessions and saved follow/stay/off profiles. Unmounted birds
+never load chunks; they disappear beyond 96 blocks or on disconnect. Restore
+follow on open ground, or stay within 64 blocks of the saved landing. No offline
+AI. Return saves the accessible home/last landing and dismisses the visible bird.
+Starting an automatic route suspends the unmounted companion.
+
+Boarding reserves a shared flight slot and writes the existing recovery journal
+before mounting. Native `ServerboundPlayerInputPacket` sets movement intent;
+player yaw/pitch steers without a detached camera or mannequin. The motor bounds
+acceleration to 0.045 blocks/tick², turns the body gradually and slows before
+swept terrain, liquid, border or unloaded-chunk collisions. Default glide is
+0.38, forward 0.75 and sprint 1 block/tick; these are server intents, not measured
+client speeds. Input packets do not directly supply position or velocity.
+
+Mounted birds hold reference-counted origin/current/look-ahead chunk areas, at
+most 27 chunks per rider. Surface landing searches 65 loaded columns within 20
+blocks, sharing the journey planning deadline. It checks the final pose sweep,
+navigates to the approach, checks again, journals the landing and dismounts only
+on safe ground. Disconnect keeps recovery; successful landing clears it.
+Non-fall damage aborts to safe ground before normal damage handling. Unmounted
+calls grant no protection. Terrain is never modified.
+
+Follow uses an offset target with distance hysteresis, bounded acceleration and
+local obstacle alternatives. It is not a general maze pathfinder. Indoor owners
+do not pull the bird through walls. Idle birds update at 4 Hz; airborne roots
+reuse the existing 20 Hz translation/10 Hz articulation. Packet interpolation
+does not provide client-side prediction; real network latency still matters.
+
 ## Rendering and art
 
 Each bird has sixteen native displays. Root translation runs at 20 Hz; articulated
 metadata at 10 Hz with native interpolation. No per-feather entities or mob AI.
-An invisible carrier holds the player; a separate anchor drives the camera.
+An invisible carrier holds the player; automatic routes use a separate camera anchor.
 An owner-only mannequin supplies skin/equipment when vanilla hides LocalPlayer.
 It is packet-only, absent from world persistence; observers see the real player.
 Equipment sends only on change; cleanup removes the private entity.
@@ -118,6 +150,8 @@ Owner/guest management remains in-game. Runtime-only `diagnostics` records calls
 arrivals, failures, preparation wall time and active journey-loop time. The last
 16 failure reasons contain no player IDs. These values exclude client frame/memory
 cost and do not measure whole-server tick time. See Operations for live reads.
+Private status also exposes `companions` (player, phase, riding, x/y/z); Oak shows
+their phase and counts mounted birds against the shared flight capacity.
 
 ## Verification
 
@@ -129,6 +163,7 @@ Before a commit, run repository-required `python scripts/check.py` and
 | Oak schema/UI | `python tests/test_aviary.py`; `node --test tests/test_aviary_web.mjs` |
 | Asset references | `python aviary/tests/check_pack.py` |
 | Java, boarding, geometry, recovery | Exact-version build and isolated smoke in Operations |
+| Native controls and companion lifecycle | Separate build with `--smoke --smoke-scope roaming`, then the same isolated harness |
 
 The native regression checks recipes, permissions, durability, geometry, short/
 long/compact/group/field trips, camera packets and cleanup. Fake clients do not

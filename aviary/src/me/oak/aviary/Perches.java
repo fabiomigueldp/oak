@@ -87,6 +87,7 @@ public final class Perches {
             if(!(actor instanceof ServerPlayer p)||app.store==null)return InteractionResult.PASS;
             String id=targets.get(target.getUUID());
             if(id!=null){if(ready(p))interact(p,id,p.getItemInHand(hand));return InteractionResult.SUCCESS;}
+            if(app.companions.interact(p,target))return InteractionResult.SUCCESS;
             Journey flight=app.journeys.get(p.getUUID());
             if(flight!=null&&flight.acceptsBoarding(target)){
                 var held=p.getItemInHand(hand);

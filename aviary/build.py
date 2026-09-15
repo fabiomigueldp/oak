@@ -14,7 +14,10 @@ parser.add_argument('--server', type=Path, required=True)
 parser.add_argument('--jdk', type=Path, required=True)
 parser.add_argument('--output', type=Path, required=True)
 parser.add_argument('--smoke', action='store_true', help='Build an isolated-test artifact; never install it in production.')
+parser.add_argument('--smoke-scope', choices=('routes', 'roaming'), default='routes')
 args = parser.parse_args()
+if args.smoke_scope != 'routes' and not args.smoke:
+    parser.error('--smoke-scope requires --smoke')
 subprocess.run([sys.executable, str(ROOT/'tests/check_pack.py')], check=True)
 out, server = args.output.resolve(), args.server.resolve()
 if out == server or server in out.parents:
@@ -51,7 +54,7 @@ for name in ('fabric.mod.json','oak-aviary.mixins.json'):
     entries[name]=(ROOT/name).read_bytes()
 if args.smoke:
     metadata=json.loads(entries['fabric.mod.json'])
-    metadata['entrypoints']['main'].append('me.oak.aviary.Smoke')
+    metadata['entrypoints']['main'].append('me.oak.aviary.RoamingSmoke' if args.smoke_scope == 'roaming' else 'me.oak.aviary.Smoke')
     metadata['version']+='-smoke'
     entries['fabric.mod.json']=json.dumps(metadata).encode()
 entries['condor-rig.json']=(ROOT/'art/condor-rig.json').read_bytes()

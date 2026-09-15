@@ -91,13 +91,15 @@ export async function renderAviary(ctx) {
       if (!matches.length) ports.append(el('p', 'muted', data.ports.length ? 'Nenhum destino encontrado.' : 'Coloque um Perch no jogo para criar o primeiro destino.'));
       if (focused) [...ports.querySelectorAll('button')].find(b => b.dataset.port === focused)?.focus({ preventScroll:true });
     }
-    live.textContent = data.error || (!data.enabled ? 'Viagens desativadas' : `${data.ports.length} destinos · ${data.flights.length} de ${data.maxFlights} aves em viagem${data.waitingCalls > 0 ? ` · ${data.waitingCalls} na fila` : ''}`);
+    live.textContent = data.error || (!data.enabled ? 'Viagens desativadas' : `${data.ports.length} destinos · ${data.flights.length + (data.companions || []).filter(b => b.riding).length} de ${data.maxFlights} aves em viagem${data.waitingCalls > 0 ? ` · ${data.waitingCalls} na fila` : ''}`);
     const phases = { prepare:'Preparando', call:'Aproximação', greet:'Aguardando embarque', waiting:'Aguardando embarque', wait:'Aguardando embarque', securing:'Preparando embarque', board:'Embarque', depart:'Decolagem', flight:'Voo', 'fade-out':'Partida', transfer:'Em trânsito', 'arrival-load':'Em trânsito', 'fade-in':'Aproximação', arrive:'Pouso', settle:'Desembarque', farewell:'Despedida' };
     const portName = id => data.ports.find(p => p.id === id)?.name || (String(id || '').startsWith('field') ? 'Chamada em campo' : id);
-    const nextFlights = JSON.stringify(data.flights);
+    const roaming = data.companions || [];
+    const birdPhases = { search:'Aproximação', approach:'Aproximação', rest:'Aguardando', securing:'Embarque', mounted:'Na sela', pilot:'Voo livre', follow:'Acompanhando', 'depart-check':'Preparando saída', depart:'Decolagem', 'land-check':'Preparando pouso', 'land-align':'Aproximação', 'land-journal':'Preparando pouso', 'land-verify':'Preparando pouso', landing:'Pouso', release:'Desembarque', dismiss:'Retornando' };
+    const nextFlights = JSON.stringify([data.flights, roaming.map(({ player, phase, riding }) => ({ player, phase, riding }))]);
     if (nextFlights !== flightSignature) {
       flightSignature = nextFlights;
-      flights.replaceChildren(...data.flights.map(f => el('div', 'aviary-flight', el('strong', '', `${portName(f.origin)} → ${portName(f.destination)}`), el('span', 'muted', `${phases[f.phase] || 'Em viagem'} · ${f.seconds} s`))));
+      flights.replaceChildren(...data.flights.map(f => el('div', 'aviary-flight', el('strong', '', `${portName(f.origin)} → ${portName(f.destination)}`), el('span', 'muted', `${phases[f.phase] || 'Em viagem'} · ${f.seconds} s`))), ...roaming.map(b => el('div', 'aviary-flight', el('strong', '', b.player || 'Companheiro'), el('span', 'muted', birdPhases[b.phase] || 'Em viagem'))));
     }
   }
 

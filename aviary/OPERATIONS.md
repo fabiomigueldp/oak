@@ -4,7 +4,7 @@
 
 ## Read live state first
 
-Oak: `/admin/#aviary`. It shows destinations, anchors, journeys and inspections.
+Oak: `/admin/#aviary`. It shows destinations, anchors, journeys, companions and inspections.
 Use the available Oak Operator skill for MCP/SDK/SSH access. Discover once;
 `oak_call(method="describe", data={"method":"jobs.submit"})` describes jobs.
 Client examples: [operator interfaces](../docs/operator-agents.md).
@@ -21,6 +21,8 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         state = json.loads(stream.readline(131073))
 print({key: state[key] for key in ('available', 'enabled', 'revision', 'error')})
 print('ports', len(state['ports']), 'flights', len(state['flights']))
+print('companions', len(state.get('companions', [])),
+      'riders', sum(b['riding'] for b in state.get('companions', [])))
 ```
 
 Read `network`, `waitingCalls`, `diagnostics` or individual ports only when needed.
@@ -48,7 +50,7 @@ part of this edit contract. A successful socket request is not a durable job rec
 | --- | --- |
 | Mod | `/srv/oak/server/mods/oak-aviary.jar` |
 | Policy, ports and physical anchors | `/srv/oak/server/config/oak-aviary/settings.json` |
-| Preferences and recovery journals | Same directory: `players/`, `journeys/` |
+| Preferences, companion modes/landings and recovery journals | Same directory: `players/`, `companions/`, `journeys/` |
 | Private control socket | `/run/oak-telemetry/aviary.sock` |
 | Content-addressed resource packs | `/srv/oak/web/packs/` |
 | Releases and rollback copies | `/opt/oak-aviary/releases/<commit>/` |
@@ -70,9 +72,9 @@ python3 aviary/build.py --server /srv/oak/server --jdk /path/to/jdk --output /tm
 Output: `oak-aviary.jar`, `oak-aviary-pack.zip`, `build.json` (hashes/size).
 Build output must be outside the server tree. Publish mod and pack together:
 
-1. Run relevant checks and required CI. Check for active journeys, recovery
+1. Run relevant checks and required CI. Check for active journeys, mounted companions, recovery
    records, administrative jobs and pending restores before maintenance.
-2. If the Oak contract/UI changed, install matching Control with
+2. If the Python Oak contract changed, install matching Control with
    `sudo python3 scripts/install-control.py <sha>`; publish the website through
    `sudo /usr/local/sbin/oak-site-deploy <sha>`. [Website runbook](../deploy/README.md).
 3. For an authorized mod upgrade, stop `oak`, then run
@@ -98,7 +100,10 @@ host_namespace=$(readlink /proc/self/ns/net)
 sudo unshare --net python3 aviary/tests/run_smoke.py /srv/oak/server /tmp/aviary-smoke/oak-aviary.jar "$host_namespace"
 ```
 
-Build `/tmp/aviary-smoke` with `--smoke` first. The harness currently launches
+Build `/tmp/aviary-smoke` with `--smoke` first (automatic routes). For manual
+flight and companion changes, use a separate output with `--smoke --smoke-scope
+roaming` and the same harness. This tests native input, steering, landing,
+stay/follow and disconnect recovery. The harness currently launches
 `/usr/bin/java`; verify it is Java 25. Read the saved `smoke.log` on failure.
 Do not run this multi-minute suite for documentation or texture-reference edits.
 
@@ -107,6 +112,8 @@ Do not run this multi-minute suite for documentation or texture-reference edits.
 | Symptom | First evidence |
 | --- | --- |
 | No destinations | Java/pack status, discovery/access, active anchor, current network policy |
+| Companion not returning | Saved `companions/<uuid>.json` mode/landing, pack acceptance, open ground and current phase |
+| Free flight slowing or landing rejected | Loaded terrain ahead, wing/rider clearance and safe surface within 20 blocks |
 | Placement or takeoff rejected | Loaded support, safe dismount, current corridor; preview is not route approval |
 | Stuck after interruption | Recovery journal and safe landing availability; never delete the journal |
 | Missing rider or collapsed bird | Matching mod/pack, camera mode, renderer basis/pivots; Development rendering section |

@@ -93,7 +93,7 @@ final class AviaryControl implements AutoCloseable {
             var owner=app.server.getPlayerList().getPlayer(UUID.fromString(p.owner()));if(owner!=null)port.addProperty("ownerName",owner.getGameProfile().name());
             if(perch!=null){var names=new JsonObject();for(String guest:perch.guests()){var player=app.server.getPlayerList().getPlayer(UUID.fromString(guest));if(player!=null)names.addProperty(guest,player.getGameProfile().name());}port.add("guestNames",names);}
             if(checks.containsKey(p.id())&&checks.get(p.id()).get("revision").getAsLong()==app.store.revision)port.add("check",checks.get(p.id()).deepCopy());ports.add(port);
-        }result.add("ports",ports);result.add("diagnostics",app.diagnostics.status());JsonArray flights=new JsonArray();for(var j:app.journeys.values())flights.add(j.status());result.add("flights",flights);return result;
+        }result.add("ports",ports);result.add("diagnostics",app.diagnostics.status());result.add("companions",app.companions.status());JsonArray flights=new JsonArray();for(var j:app.journeys.values())flights.add(j.status());result.add("flights",flights);return result;
     }
     public void close(){running=false;try{if(listener!=null){listener.close();Files.deleteIfExists(socket);}}catch(Exception ignored){}}
 }

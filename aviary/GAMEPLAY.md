@@ -40,6 +40,48 @@
   The friend accepts explicitly. Each gets a bird; takeoff and landing are
   staggered, not a close formation. Field pickup does not support group departure.
 
+## Free flight and companion
+
+Use **Whistle → Free flight**, stand on open Overworld ground and wait for the
+bird to land. Use its saddle to board; no destination or perch is required.
+Your normal first-person/F5 camera remains available. The server does not change
+your camera mode. Start with W or Space.
+
+| Default control | Action |
+| --- | --- |
+| Mouse | Steer with your view, including gradual climbing or descending |
+| W | Accelerate |
+| Ctrl + W | Fly faster |
+| S | Slow down |
+| A / D | Turn left / right relative to your view |
+| Space | Climb |
+| Hold Shift | Find nearby open ground and land before dismounting |
+
+Controls follow your Minecraft key bindings. Releasing movement keeps a slow
+glide. Movement accelerates and turns gradually; terrain and unloaded chunks
+make the bird brake. If no safe landing exists below, continue toward open ground
+and hold Shift again. On the ground, Shift dismounts without taking off.
+Using items and attacking are unavailable while riding.
+
+**Whistle → Companion** provides:
+
+- **Call bird:** bring the bird to nearby ground for boarding.
+- **Follow:** take off when you move away outdoors; land when you stop.
+- **Stay:** land and wait. The position survives reconnects and restarts.
+- **Return:** leave for your accessible home destination, or the last landing.
+  The bird waits there; the return journey is not simulated outside your area.
+
+Following stays outdoors and gives buildings space. Distant/offline birds leave
+no active entities or loaded chunks. A following bird returns when you are back
+on open ground; a waiting bird appears when you approach its saved position.
+There is one companion per player. Boarding shares the existing simultaneous
+flight capacity with destination trips. Calling an automatic route puts an
+unmounted companion away until the route finishes.
+
+Damage interrupts free flight and returns the rider to safe ground before
+applying damage; fall damage is suppressed while riding. Disconnects retain a
+recovery record for the next login. The bird has no hunger, bonding or item cost.
+
 ## Destinations and birds
 
 New perches are private. Use **Access** to share them or **Guests** to invite
@@ -72,6 +114,9 @@ and grants no travel advantage. Use another item or an empty hand to board.
 
 | Command | Purpose |
 | --- | --- |
+| `/aviary roam` | Call the bird for free flight |
+| `/aviary bird` | Open companion controls |
+| `/aviary bird call`, `follow`, `stay`, `return` or `land` | Companion action |
 | `/aviary` | Open destinations |
 | `/aviary fly home` | Travel to an accessible destination |
 | `/aviary skip` | Request a safe shortened route |
