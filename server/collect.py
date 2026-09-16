@@ -42,7 +42,7 @@ def collect_status(online):
     disk = shutil.disk_usage(ROOT)
     backups = sorted((ROOT / 'backups').glob('oak-*.tar.gz'))
     data = {'updated': time.time(), 'online': online is not None, 'players': online['players'] if online else [],
-            'maxPlayers': online['maximum'] if online else 12, 'version': '26.3-rc-3', 'chat': messages[-60:],
+            'maxPlayers': online['maximum'] if online else 12, 'version': '26.3', 'chat': messages[-60:],
             'disk': {'used': disk.used, 'total': disk.total, 'free': disk.free},
             'backup': {'last': backups[-1].stat().st_mtime if backups else None, 'count': len(backups),
                        'bytes': sum(path.stat().st_size for path in backups)}, 'warnings': []}

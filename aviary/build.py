@@ -34,7 +34,7 @@ with zipfile.ZipFile(apis[0]) as api:
         path = out/Path(entry['file']).name
         path.write_bytes(api.read(entry['file']))
         jars.append(path)
-jars.append(server/'versions/26.3-rc-3/server-26.3-rc-3.jar')
+jars.append(server/'versions/26.3/server-26.3.jar')
 sources=sorted((ROOT/'src').rglob('*.java'))
 if args.smoke:
     sources+=sorted((ROOT/'tests').rglob('*.java'))
